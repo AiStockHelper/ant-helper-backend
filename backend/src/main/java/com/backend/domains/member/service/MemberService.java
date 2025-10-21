@@ -1,26 +1,24 @@
-package com.backend.domains.member;
+package com.backend.domains.member.service;
 
 import java.util.List;
 import java.util.UUID;
-
-import javax.crypto.SecretKey;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.common.util.encoder.EncryptUtil;
 import com.backend.common.util.encoder.PasswordEncoderUtil;
 import com.backend.domains.email.service.EmailTokenService;
-import com.backend.domains.member.domain.AutoTradeState;
 import com.backend.domains.member.domain.LogoutToken;
 import com.backend.domains.member.domain.Member;
-import com.backend.domains.member.domain.MemberRole;
-import com.backend.domains.member.dto.MemberDTO.CreateMemberRequest;
+import com.backend.domains.member.dto.request.CreateMemberRequest;
+import com.backend.domains.member.enums.AutoTradeState;
+import com.backend.domains.member.enums.MemberRole;
 import com.backend.domains.member.repository.LogoutRepository;
 import com.backend.domains.member.repository.MemberRepository;
 import com.backend.domains.member.repository.RefreshTokenRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,9 +28,14 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class MemberService {
 
+	// 회원 관련
 	private final MemberRepository memberRepository;
+	private final MemberAccountService memberAccountService;
+
+	// 비밀번호 암호화 유틸
 	private final PasswordEncoderUtil passwordEncoderUtil;
 
+	// 회원 인증 관련
 	private final EmailTokenService emailTokenService;
 	private final RefreshTokenRepository refreshTokenRepository;
 	private final LogoutRepository logoutRepository;
@@ -45,30 +48,15 @@ public class MemberService {
 		emailTokenService.verifyEmailToken(request.getToken());
 
 		// 비밀번호 암호화
-		String password = passwordEncoderUtil.encodePassword(request.getPw());
-
-		// appKey 암호화
-		SecretKey appKeySalt = EncryptUtil.generateKey();
-		String encryptedAppKey = EncryptUtil.encrypt(request.getAppKey(), appKeySalt);
-
-		// secretKey 암호화
-		SecretKey secretKeySalt = EncryptUtil.generateKey();
-		String encryptedSecretKey = EncryptUtil.encrypt(request.getSecretKey(), secretKeySalt);
+		String encodedPassword = passwordEncoderUtil.encodePassword(request.getPw());
 
 		// 회원 저장
 		Member member = Member.builder()
 			.email(request.getEmail())
-			.pw(password)
+			.pw(encodedPassword)
 			.memberRole(MemberRole.USER) // 기본 권한은 USER
-			.appKey(encryptedAppKey)
-			.secretKey(encryptedSecretKey)
-			.appKeySalt(EncryptUtil.keyToString(appKeySalt))
-			.secretKeySalt(EncryptUtil.keyToString(secretKeySalt))
 			.autoTradeState(AutoTradeState.OFF)
-			.comprehensiveAccountNumber(request.getComprehensiveAccountNumber())
-			.accountProductCode(request.getAccountProductCode())
 			.build();
-
 		memberRepository.save(member);
 	}
 
@@ -84,28 +72,6 @@ public class MemberService {
 	@Transactional
 	public void deleteMember(Member member) {
 		memberRepository.delete(member);
-	}
-
-	// AppKey 조회
-	public String getDecryptedAppKey(Member member) {
-		String appKey = member.getAppKey();
-		String appKeySalt = member.getAppKeySalt();
-
-		return EncryptUtil.decrypt(appKey, EncryptUtil.stringToKey(appKeySalt));
-	}
-
-	// SecretKey 조회
-	public String getDecryptedSecretKey(Member member) {
-		String secretKey = member.getSecretKey();
-		String secretKeySalt = member.getSecretKeySalt();
-
-		return EncryptUtil.decrypt(secretKey, EncryptUtil.stringToKey(secretKeySalt));
-	}
-
-	//Approval Key 저장
-	@Transactional
-	public void updateApprovalKey(Member member, String approvalKey) {
-		member.setApprovalKey(approvalKey);
 	}
 
 	//로그아웃

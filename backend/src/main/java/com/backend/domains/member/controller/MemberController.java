@@ -1,4 +1,4 @@
-package com.backend.domains.member;
+package com.backend.domains.member.controller;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,10 +21,12 @@ import com.backend.common.dto.DataResponse;
 import com.backend.common.dto.ErrorResponse;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
 import com.backend.common.util.memberLoader.MemberLoader;
-import com.backend.domains.member.domain.AutoTradeState;
+import com.backend.domains.member.dto.request.CreateMemberRequest;
+import com.backend.domains.member.dto.request.UpdateAutoTradeStateRequest;
+import com.backend.domains.member.enums.AutoTradeState;
 import com.backend.domains.member.domain.Member;
-import com.backend.domains.member.dto.MemberDTO.CreateMemberRequest;
-import com.backend.domains.member.dto.MemberDTO.UpdateAutoTradeStateRequest;
+import com.backend.domains.member.service.MemberService;
+
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "MEMBER API", description = "회원에 대한 API입니다.")
@@ -42,10 +44,6 @@ public class MemberController {
 		summary = "회원가입",
 		description = "사용자 이름, 비밀번호, 이메일, appKey, secretKey, 계좌번호, 뒷자리(2자리)를 사용하여 회원가입",
 		responses = {
-			@ApiResponse(
-				responseCode = "200",
-				description = "성공"
-			),
 			@ApiResponse(
 				responseCode = "409",
 				description = "이미 존재하는 회원입니다.",
@@ -88,10 +86,6 @@ public class MemberController {
 		description = "회원 탈퇴",
 		responses = {
 			@ApiResponse(
-				responseCode = "200",
-				description = "성공"
-			),
-			@ApiResponse(
 				responseCode = "401",
 				description = "유효하지 않은 액세스 토큰입니다.",
 				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
@@ -111,10 +105,6 @@ public class MemberController {
 		summary = "로그아웃",
 		description = "로그아웃",
 		responses = {
-			@ApiResponse(
-				responseCode = "200",
-				description = "성공"
-			),
 			@ApiResponse(
 				responseCode = "401",
 				description = "유효하지 않은 액세스 토큰입니다.",
@@ -136,10 +126,6 @@ public class MemberController {
 		summary = "자동거래 상태 변경",
 		description = "자동거래 상태 변경",
 		responses = {
-			@ApiResponse(
-				responseCode = "200",
-				description = "성공"
-			),
 			@ApiResponse(
 				responseCode = "401",
 				description = "유효하지 않은 액세스 토큰입니다.",

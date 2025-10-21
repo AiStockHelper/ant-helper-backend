@@ -45,7 +45,22 @@ public enum ErrorCode {
 	CAPTCHA_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "캡차 서버에서 에러가 발생하였습니다."),
 
 	//502
-	EMAIL_BAD_GATEWAY(HttpStatus.BAD_GATEWAY, "이메일 전송에 실패하였습니다.");
+	EMAIL_BAD_GATEWAY(HttpStatus.BAD_GATEWAY, "이메일 전송에 실패하였습니다."),
+
+	// 권한 오류
+	FORBIDDEN(HttpStatus.FORBIDDEN, "해당 권한이 없습니다."),
+
+	// Member 관련 오류
+
+	// MemberAccount 관련 오류
+	MEMBER_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 회원 계좌를 찾을 수 없습니다."),
+	DUPLICATE_MEMBER_ACCOUNT(HttpStatus.CONFLICT, "이미 사용되는 회원 계좌입니다."),
+
+	// 한국 투자 증권 관련 요류
+	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 계좌를 찾을 수 없습니다."),
+
+	;
+
 
 	private final HttpStatus httpStatus;
 	private final String message;

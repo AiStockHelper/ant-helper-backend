@@ -1,4 +1,4 @@
-package com.backend.domains.member.domain;
+package com.backend.domains.member.enums;
 
 import lombok.Getter;
 

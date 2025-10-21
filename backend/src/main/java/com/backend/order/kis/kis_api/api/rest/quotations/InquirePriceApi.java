@@ -1,0 +1,42 @@
+package com.backend.order.kis.kis_api.api.rest.quotations;
+
+import com.backend.order.kis.kis_api.api.CommonRestApi;
+import com.backend.order.kis.kis_client.api.annotation.Header;
+import com.backend.order.kis.kis_client.api.annotation.Parameter;
+import com.backend.order.kis.kis_client.api.annotation.RestApi;
+
+import lombok.NoArgsConstructor;
+import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
+
+/**
+ * 주식현재가 시세[v1_국내주식-008]
+ */
+@NoArgsConstructor
+@RequiredArgsConstructor
+@Setter
+@RestApi(method = RestApi.Method.GET, path = "/uapi/domestic-stock/v1/quotations/inquire-price")
+public class InquirePriceApi extends CommonRestApi<InquirePriceResult> {
+
+    @Header
+    private String trId = "FHKST01010100";
+
+    /**
+     * 조건 시장 분류 코드
+     *
+     * J:KRX, NX:NXT, UN:통합
+     */
+    @Parameter
+    private String fidCondMrktDivCode = "UN";
+
+    /**
+     * 입력 종목코드
+     *
+     * 종목코드 (ex 005930 삼성전자)
+     */
+    @Parameter
+    @NonNull
+    private String fidInputIscd;
+
+}

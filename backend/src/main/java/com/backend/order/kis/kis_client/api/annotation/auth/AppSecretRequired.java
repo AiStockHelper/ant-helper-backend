@@ -1,0 +1,20 @@
+package com.backend.order.kis.kis_client.api.annotation.auth;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Inherited
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface AppSecretRequired {
+    public enum Location {
+        HEADER,
+        BODY,
+    }
+
+    String key() default "appsecret";
+    Location location() default Location.HEADER;
+}

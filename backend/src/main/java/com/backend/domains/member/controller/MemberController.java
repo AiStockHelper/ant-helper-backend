@@ -1,5 +1,7 @@
 package com.backend.domains.member.controller;
 
+import static com.backend.common.exception.ErrorCode.*;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -10,23 +12,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import com.backend.common.dto.DataResponse;
-import com.backend.common.dto.ErrorResponse;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
+import com.backend.common.swagger.ApiErrorMapping;
 import com.backend.common.util.memberLoader.MemberLoader;
+import com.backend.domains.member.domain.Member;
 import com.backend.domains.member.dto.request.CreateMemberRequest;
 import com.backend.domains.member.dto.request.UpdateAutoTradeStateRequest;
 import com.backend.domains.member.enums.AutoTradeState;
-import com.backend.domains.member.domain.Member;
 import com.backend.domains.member.service.MemberService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "MEMBER API", description = "회원에 대한 API입니다.")
@@ -42,15 +41,9 @@ public class MemberController {
 	@PostMapping("/signup")
 	@Operation(
 		summary = "회원가입",
-		description = "사용자 이름, 비밀번호, 이메일, appKey, secretKey, 계좌번호, 뒷자리(2자리)를 사용하여 회원가입",
-		responses = {
-			@ApiResponse(
-				responseCode = "409",
-				description = "이미 존재하는 회원입니다.",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+		description = "사용자 이름, 비밀번호, 이메일, appKey, secretKey, 계좌번호, 뒷자리(2자리)를 사용하여 회원가입"
 	)
+	@ApiErrorMapping({UNAUTHENTICATED_EMAIL, EMAIL_DUPLICATE})
 	public ResponseEntity<DataResponse<Void>> createMember(@RequestBody @Valid CreateMemberRequest request) {
 		memberService.createMember(request);
 
@@ -60,18 +53,7 @@ public class MemberController {
 	@PostMapping(value = "/login", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
 	@Operation(
 		summary = "로그인",
-		description = "로그인 성공 시 accessToken, refreshToken을 반환",
-		responses = {
-			@ApiResponse(
-				responseCode = "200",
-				description = "성공"
-			),
-			@ApiResponse(
-				responseCode = "401",
-				description = "로그인 실패",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+		description = "로그인 성공 시 accessToken, refreshToken을 반환"
 	)
 	public ResponseEntity<DataResponse<Void>> loginMember(
 		@RequestParam("email") String email,
@@ -83,14 +65,7 @@ public class MemberController {
 	@DeleteMapping
 	@Operation(
 		summary = "회원 탈퇴",
-		description = "회원 탈퇴",
-		responses = {
-			@ApiResponse(
-				responseCode = "401",
-				description = "유효하지 않은 액세스 토큰입니다.",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+		description = "회원 탈퇴"
 	)
 	public ResponseEntity<DataResponse<Void>> deleteMember() {
 		Member member = memberLoader.getMember();
@@ -103,14 +78,8 @@ public class MemberController {
 	@PostMapping("/logout")
 	@Operation(
 		summary = "로그아웃",
-		description = "로그아웃",
-		responses = {
-			@ApiResponse(
-				responseCode = "401",
-				description = "유효하지 않은 액세스 토큰입니다.",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+		description = "로그아웃"
+
 	)
 	public ResponseEntity<DataResponse<Void>> logoutMember(HttpServletRequest request) {
 		Member member = memberLoader.getMember();
@@ -124,14 +93,7 @@ public class MemberController {
 	@PatchMapping("/auto-trade")
 	@Operation(
 		summary = "자동거래 상태 변경",
-		description = "자동거래 상태 변경",
-		responses = {
-			@ApiResponse(
-				responseCode = "401",
-				description = "유효하지 않은 액세스 토큰입니다.",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+		description = "자동거래 상태 변경"
 	)
 	public ResponseEntity<DataResponse<Void>> updateAutoTradeState(@RequestBody UpdateAutoTradeStateRequest request) {
 		Member member = memberLoader.getMember();

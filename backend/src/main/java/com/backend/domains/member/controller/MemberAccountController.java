@@ -1,5 +1,7 @@
 package com.backend.domains.member.controller;
 
+import static com.backend.common.exception.ErrorCode.*;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -7,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.common.dto.DataResponse;
 import com.backend.common.dto.ErrorResponse;
+import com.backend.common.swagger.ApiErrorMapping;
 import com.backend.common.util.memberLoader.MemberLoader;
 import com.backend.domains.member.domain.Member;
 import com.backend.domains.member.dto.request.CreateMemberAccountRequest;
@@ -36,20 +39,9 @@ public class MemberAccountController {
 		description = """
 			회원의 계좌를 생성합니다.
 			- accountType: 계좌 유형 (예: REAL_TRADE, PAPER_TRADE)
-			""",
-		responses = {
-			@ApiResponse(
-				responseCode = "400",
-				description = "잘못된 계좌 -> 설명 다양",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			),
-			@ApiResponse(
-				responseCode = "409",
-				description = "이미 사용하는 계좌입니다.",
-				content = @Content(schema = @Schema(implementation = ErrorResponse.class))
-			)
-		}
+			"""
 	)
+	@ApiErrorMapping({KIS_ACCOUNT_NOT_FOUND, DUPLICATE_MEMBER_ACCOUNT})
 	public ResponseEntity<DataResponse<CreateMemberAccountResponse>> createMemberAccount(
 		CreateMemberAccountRequest request
 	) {

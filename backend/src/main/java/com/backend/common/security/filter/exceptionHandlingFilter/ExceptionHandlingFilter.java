@@ -28,8 +28,8 @@ public class ExceptionHandlingFilter extends OncePerRequestFilter {
 		} catch (ApiException e) {
 			log.warn("ExceptionHandlingFilter: {}", e.getMessage());
 
-			ErrorResponse errorResponse = ErrorResponse.of(e.getHttpStatus(), e.getMessage());
-			ResponseWriter.writeResponse(response, errorResponse, e.getHttpStatus());
+			ErrorResponse errorResponse = ErrorResponse.from(e.getErrorCode());
+			ResponseWriter.writeResponse(response, errorResponse, e.getErrorCode().getHttpStatus());
 		} catch (Exception e) {
 			log.warn("ExceptionHandlingFilter: {}", e.getMessage());
 			ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;

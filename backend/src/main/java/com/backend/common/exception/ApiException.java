@@ -1,24 +1,23 @@
 package com.backend.common.exception;
 
-import org.springframework.http.HttpStatus;
-
 import lombok.Getter;
 
 @Getter
 public class ApiException extends RuntimeException {
 
-	private final HttpStatus httpStatus;
+	private final ErrorCode errorCode;
 
-	public ApiException(HttpStatus httpStatus, String message) {
-		super(message);
-		this.httpStatus = httpStatus;
+	public ApiException(ErrorCode errorCode, String message) {
+		super(errorCode.getMessage());
+		this.errorCode = errorCode;
 	}
 
 	public static ApiException from(ErrorCode errorCode) {
-		return new ApiException(errorCode.getHttpStatus(), errorCode.getMessage());
+		return new ApiException(errorCode, errorCode.getMessage());
 	}
 
-	public static ApiException of(HttpStatus httpStatus, String message) {
-		return new ApiException(httpStatus, message);
+	// 메시지를 커스터마이징 할 수 있는 생성자
+	public static ApiException of(ErrorCode errorCode, String message) {
+		return new ApiException(errorCode, message);
 	}
 }

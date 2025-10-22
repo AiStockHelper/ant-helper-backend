@@ -7,44 +7,52 @@ import org.springframework.http.HttpStatus;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import com.backend.common.exception.ErrorCode;
+
 import lombok.Getter;
 
 @Getter
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorResponse extends BaseResponse {
+	private final String code;
 	private final String message;
 	private final List<String> reasons;
 
-	private ErrorResponse(Boolean isSuccess, HttpStatus status, String message) {
+	private ErrorResponse(Boolean isSuccess, HttpStatus status, String code, String message) {
 		super(isSuccess, status);
 		this.message = message;
+		this.code = code;
 		this.reasons = null;
 	}
 
-	private ErrorResponse(Boolean isSuccess, HttpStatus status, String message, List<String> reasons) {
+	// Validation Error의 reasons 포함 생성자
+	private ErrorResponse(Boolean isSuccess, HttpStatus status, String code, String message,
+		List<String> reasons) {
 		super(isSuccess, status);
 		this.message = message;
+		this.code = code;
 		this.reasons = reasons;
 	}
 
 	public static ErrorResponse of(ErrorCode errorCode, List<String> reasons) {
-		Boolean isSuccess = false;
-		HttpStatus status = errorCode.getHttpStatus();
-		String message = errorCode.getMessage();
-
-		return new ErrorResponse(isSuccess, status, message, reasons);
+		return new ErrorResponse(
+			false,
+			errorCode.getHttpStatus(),
+			errorCode.getCode(),
+			errorCode.getMessage(),
+			reasons
+		);
 	}
 
 	public static ErrorResponse from(ErrorCode errorCode) {
-		Boolean isSuccess = false;
-		HttpStatus status = errorCode.getHttpStatus();
-		String message = errorCode.getMessage();
-
-		return new ErrorResponse(isSuccess, status, message);
+		return new ErrorResponse(
+			false,
+			errorCode.getHttpStatus(),
+			errorCode.getCode(),
+			errorCode.getMessage()
+		);
 	}
 
-	public static ErrorResponse of(HttpStatus httpStatus, String message) {
-		Boolean isSuccess = false;
-		return new ErrorResponse(isSuccess, httpStatus, message);
+	public static ErrorResponse of(ErrorCode errorCode, String message) {
+		return new ErrorResponse(false, errorCode.getHttpStatus(), errorCode.getCode(),  message);
 	}
 }

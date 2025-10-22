@@ -20,6 +20,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import com.backend.common.dto.ErrorResponse;
 import com.backend.order.kis.kis_client.exception.KisClientException;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -30,7 +31,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<Object> handleApiException(ApiException e) {
 		log.warn("handleApiException", e);
 
-		return makeErrorResponseEntity(e.getHttpStatus(), e.getMessage());
+		return makeErrorResponseEntity(e.getErrorCode());
 	}
 
 	// KisClientException 처리
@@ -114,15 +115,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			.body(ErrorResponse.from(errorCode));
 	}
 
+	// ErrorCode와 메시지 리스트를 받아서 Response를 만드는 메서드
 	private ResponseEntity<Object> makeErrorResponseEntity(ErrorCode errorCode, List<String> message) {
 		return ResponseEntity
 			.status(errorCode.getHttpStatus())
 			.body(ErrorResponse.of(errorCode, message));
-	}
-
-	private ResponseEntity<Object> makeErrorResponseEntity(HttpStatus httpStatus, String message) {
-		return ResponseEntity
-			.status(httpStatus)
-			.body(ErrorResponse.of(httpStatus, message));
 	}
 }

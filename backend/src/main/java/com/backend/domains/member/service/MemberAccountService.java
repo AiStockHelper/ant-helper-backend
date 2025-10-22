@@ -65,7 +65,6 @@ public class MemberAccountService {
 		return account.getId();
 	}
 
-
 	// AppKey 조회(복호화)
 	public String getDecryptedAppKey(final Long memberAccountId) {
 		MemberAccount account = memberAccountRepository.findById(memberAccountId)

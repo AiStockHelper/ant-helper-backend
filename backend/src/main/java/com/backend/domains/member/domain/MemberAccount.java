@@ -1,5 +1,6 @@
 package com.backend.domains.member.domain;
 
+import com.backend.common.util.encoder.EncryptUtil;
 import com.backend.order.kis.enums.AccountType;
 
 import jakarta.persistence.Column;
@@ -88,5 +89,13 @@ public class MemberAccount {
 	// approvalKey 업데이트 메서드
 	public void updateApprovalKey(String approvalKey) {
 		this.approvalKey = approvalKey;
+	}
+
+	public String getDecryptedAppKey() {
+		return EncryptUtil.decrypt(appKey, EncryptUtil.stringToKey(appKeySalt));
+	}
+
+	public String getDecryptedSecretKey() {
+		return EncryptUtil.decrypt(secretKey, EncryptUtil.stringToKey(secretKeySalt));
 	}
 }

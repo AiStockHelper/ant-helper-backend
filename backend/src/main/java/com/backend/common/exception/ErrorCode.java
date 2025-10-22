@@ -14,7 +14,6 @@ public enum ErrorCode {
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부에서 에러가 발생하였습니다.", "C-004"),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "해당 권한이 없습니다.", "C-005"),
 
-
 	// 이메일 기능 예외
 	INVALID_EMAIL_CODE(HttpStatus.BAD_REQUEST, "유효하지 않은 이메일 코드입니다.", "E-001"),
 	EMAIL_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 이메일 코드를 찾을 수 없습니다.", "E-002"),
@@ -41,7 +40,6 @@ public enum ErrorCode {
 	// 캡차 기능 예외
 	CAPTCHA_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "캡차 서버에서 에러가 발생하였습니다.", "CS-001"),
 
-
 	// 한국 투자 증권 관련 요류
 	KIS_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 계좌를 찾을 수 없습니다.", "KIS-001"),
 	KIS_CLIENT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "요청에서 오류가 발생하였습니다.", "KIS-002"),
@@ -51,7 +49,6 @@ public enum ErrorCode {
 	STOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 주식을 찾을 수 없습니다.", "KIS-006"),
 	TRANSACTION_DUPLICATE(HttpStatus.CONFLICT, "이미 거래가 존재합니다", "KIS-007"),
 	PRODUCT_NUMBER_DUPLICATE(HttpStatus.CONFLICT, "Product Number가 중복됩니다.", "KIS-008"),
-
 
 	// 기타
 	AUTO_TRADE_STATE_OFF(HttpStatus.INTERNAL_SERVER_ERROR, "자동 거래 상태가 꺼져 있습니다.", "AT-001"),

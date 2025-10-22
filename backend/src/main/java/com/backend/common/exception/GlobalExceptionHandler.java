@@ -18,6 +18,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.backend.common.dto.ErrorResponse;
+import com.backend.order.kis.kis_client.exception.KisClientException;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -29,6 +31,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		log.warn("handleApiException", e);
 
 		return makeErrorResponseEntity(e.getHttpStatus(), e.getMessage());
+	}
+
+	// KisClientException 처리
+	@ExceptionHandler(KisClientException.class)
+	public ResponseEntity<Object> handleKisClientException(KisClientException e) {
+		log.warn("handleKisClientException", e);
+
+		ErrorCode errorCode = ErrorCode.KIS_CLIENT_ERROR;
+		return makeErrorResponseEntity(errorCode);
 	}
 
 	@Override

@@ -30,7 +30,7 @@ public class MemberAccountService {
 
 	// 멤버 계좌 저장
 	@Transactional
-	public void saveMemberAccount(
+	public long saveMemberAccount(
 		final Long memberId,
 		final AccountType accountType,
 		final String appKey,
@@ -62,6 +62,7 @@ public class MemberAccountService {
 			.accountProductCode(accountProductCode)
 			.build();
 		memberAccountRepository.save(account);
+		return account.getId();
 	}
 
 

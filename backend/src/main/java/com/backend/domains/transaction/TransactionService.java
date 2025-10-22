@@ -7,7 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.domains.member.domain.AutoTradeState;
+import com.backend.domains.member.enums.AutoTradeState;
 import com.backend.domains.member.domain.Member;
 import com.backend.domains.transaction.domain.Transaction;
 import com.backend.domains.transaction.domain.TransactionItem;

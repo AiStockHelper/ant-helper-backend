@@ -14,7 +14,7 @@ import com.backend.common.exception.ErrorCode;
 import com.backend.domains.email.EmailUtil;
 import com.backend.domains.email.domain.EmailCode;
 import com.backend.domains.email.repository.EmailCodeRepository;
-import com.backend.domains.member.MemberService;
+import com.backend.domains.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 
 @Service

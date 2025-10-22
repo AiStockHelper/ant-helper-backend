@@ -1,13 +1,16 @@
 package com.backend.domains.member.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.backend.common.dto.DataResponse;
 import com.backend.common.dto.ErrorResponse;
 import com.backend.common.util.memberLoader.MemberLoader;
 import com.backend.domains.member.domain.Member;
 import com.backend.domains.member.dto.request.CreateMemberAccountRequest;
+import com.backend.domains.member.dto.response.CreateMemberAccountResponse;
 import com.backend.domains.member.service.MemberAccountService;
 import com.backend.order.kis.enums.AccountType;
 
@@ -47,10 +50,12 @@ public class MemberAccountController {
 			)
 		}
 	)
-	public void createMemberAccount(CreateMemberAccountRequest request) {
+	public ResponseEntity<DataResponse<CreateMemberAccountResponse>> createMemberAccount(
+		CreateMemberAccountRequest request
+	) {
 		Member member = memberLoader.getMember();
 
-		memberAccountService.saveMemberAccount(
+		long memberAccountId = memberAccountService.saveMemberAccount(
 			member.getId(),
 			request.getAccountType(),
 			request.getAppKey(),
@@ -58,5 +63,7 @@ public class MemberAccountController {
 			request.getAccountNumber(),
 			request.getAccountProductCode()
 		);
+
+		return ResponseEntity.ok(DataResponse.from(new CreateMemberAccountResponse(memberAccountId)));
 	}
 }

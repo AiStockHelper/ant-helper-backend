@@ -3,6 +3,7 @@ package com.backend.order.domestic.controller;
 import static com.backend.common.exception.ErrorCode.*;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,8 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.common.dto.DataResponse;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.swagger.ApiErrorMapping;
-import com.backend.common.util.memberLoader.MemberLoader;
-import com.backend.domains.member.domain.Member;
 import com.backend.order.domestic.dto.request.DomesticTradeRequest;
 import com.backend.order.domestic.service.DomesticStockService;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceResult;
@@ -36,7 +35,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DomesticStockController {
 
-	private final MemberLoader memberLoader;
 	private final DomesticStockService domesticStockService;
 
 	@PostMapping("/buy")
@@ -49,11 +47,11 @@ public class DomesticStockController {
 		ErrorCode.KIS_CLIENT_ERROR
 	})
 	public ResponseEntity<DataResponse<OrderCashResult>> buyStock(
+		@AuthenticationPrincipal Long memberId,
 		@RequestParam("memberAccountId") Long memberAccountId,
 		@RequestBody @Valid DomesticTradeRequest request
 	) {
-		Member member = memberLoader.getMember();
-		OrderCashResult orderCashResult = domesticStockService.buyStock(member.getId(), memberAccountId, request);
+		OrderCashResult orderCashResult = domesticStockService.buyStock(memberId, memberAccountId, request);
 
 		return ResponseEntity.ok(DataResponse.from(orderCashResult));
 	}
@@ -68,12 +66,11 @@ public class DomesticStockController {
 		ErrorCode.KIS_CLIENT_ERROR
 	})
 	public ResponseEntity<DataResponse<OrderCashResult>> sellStock(
+		@AuthenticationPrincipal Long memberId,
 		@RequestParam("memberAccountId") Long memberAccountId,
 		@RequestParam @Valid DomesticTradeRequest request
 	) {
-		Member member = memberLoader.getMember();
-
-		OrderCashResult orderCashResult = domesticStockService.sellStock(member.getId(), memberAccountId, request);
+		OrderCashResult orderCashResult = domesticStockService.sellStock(memberId, memberAccountId, request);
 
 		return ResponseEntity.ok(DataResponse.from(orderCashResult));
 	}
@@ -87,11 +84,11 @@ public class DomesticStockController {
 	)
 	@ApiErrorMapping({MEMBER_ACCOUNT_NOT_FOUND, KIS_CLIENT_ERROR})
 	public ResponseEntity<DataResponse<InquireBalanceResult>> getStockBalance(
+		@AuthenticationPrincipal Long memberId,
 		@RequestParam("memberAccountId") Long memberAccountId
 	) {
-		Member member = memberLoader.getMember();
 
-		InquireBalanceResult result = domesticStockService.getBalance(member.getId(), memberAccountId);
+		InquireBalanceResult result = domesticStockService.getBalance(memberId, memberAccountId);
 
 		return ResponseEntity.ok(DataResponse.from(result));
 	}
@@ -162,12 +159,11 @@ public class DomesticStockController {
 		}
 	)
 	public ResponseEntity<DataResponse<InquirePriceResult>> getStockPrice(
+		@AuthenticationPrincipal Long memberId,
 		@RequestParam("memberAccountId") Long memberAccountId,
 		@RequestParam("productNumber") String productNumber
 	) {
-		Member member = memberLoader.getMember();
-
-		InquirePriceResult result = domesticStockService.getStockPrice(member.getId(), memberAccountId,
+		InquirePriceResult result = domesticStockService.getStockPrice(memberId, memberAccountId,
 			productNumber);
 
 		return ResponseEntity.ok(DataResponse.from(result));

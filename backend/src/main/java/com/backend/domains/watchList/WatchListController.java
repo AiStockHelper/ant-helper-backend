@@ -1,5 +1,7 @@
 package com.backend.domains.watchList;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -9,12 +11,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.common.dto.DataResponse;
 import com.backend.common.dto.ErrorResponse;
-import com.backend.common.dto.PageResponse;
 import com.backend.domains.watchList.dto.request.AddWatchListRequest;
 import com.backend.domains.watchList.dto.response.FindWatchListResponse;
 
@@ -24,8 +24,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "WATCHLIST API", description = "관심목록에 대한 API입니다.")
@@ -46,12 +44,10 @@ public class WatchListController {
 			size는 최소 1, 최대 10이다.
 			page는 0부터 시작한다."""
 	)
-	public ResponseEntity<DataResponse<PageResponse<FindWatchListResponse>>> findWatchLists(
-		@AuthenticationPrincipal Long memberId,
-		@RequestParam("size") @Min(value = 1, message = "size는 1이상이어야 합니다.") @Max(value = 10, message = "size는 10이하이어야 합니다.") int size,
-		@RequestParam("page") @Min(value = 0, message = "page는 0이상이어야 합니다.") int page
+	public ResponseEntity<DataResponse<List<FindWatchListResponse>>> findWatchLists(
+		@AuthenticationPrincipal Long memberId
 	) {
-		PageResponse<FindWatchListResponse> response = watchListService.findWatchLists(memberId, size, page);
+		List<FindWatchListResponse> response = watchListService.findWatchLists(memberId);
 
 		return ResponseEntity.ok(DataResponse.from(response));
 	}

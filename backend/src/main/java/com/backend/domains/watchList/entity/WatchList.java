@@ -1,4 +1,4 @@
-package com.backend.domains.watchList.domain;
+package com.backend.domains.watchList.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -7,11 +7,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import com.backend.domains.member.domain.Member;
+
 import com.backend.domains.watchList.enums.MarketType;
 
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,6 +20,12 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Table(
+	name = "watch_list",
+	uniqueConstraints = {
+		@UniqueConstraint(columnNames = {"member_id", "product_number", "market_type"})
+	}
+)
 public class WatchList {
 
 	@Id
@@ -27,13 +33,13 @@ public class WatchList {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(name = "member_id", updatable = false)
+	@Column(name = "member_id", updatable = false, nullable = false)
 	private Long memberId;
 
-	@Column(name = "product_number", updatable = false)
+	@Column(name = "product_number", updatable = false, nullable = false)
 	private String productNumber;
 
-	@Column(name = "market_type", updatable = false)
+	@Column(name = "market_type", updatable = false, nullable = false)
 	@Enumerated(EnumType.STRING)
 	private MarketType marketType;
 

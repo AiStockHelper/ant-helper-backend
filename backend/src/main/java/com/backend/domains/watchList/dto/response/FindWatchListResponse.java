@@ -1,6 +1,6 @@
 package com.backend.domains.watchList.dto.response;
 
-import com.backend.domains.watchList.domain.WatchList;
+import com.backend.domains.watchList.entity.WatchList;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;

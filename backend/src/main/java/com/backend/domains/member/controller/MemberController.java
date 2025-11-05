@@ -4,8 +4,8 @@ import static com.backend.common.exception.ErrorCode.*;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,11 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.common.dto.DataResponse;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
 import com.backend.common.swagger.ApiErrorMapping;
-import com.backend.common.util.memberLoader.MemberLoader;
-import com.backend.domains.member.domain.Member;
 import com.backend.domains.member.dto.request.CreateMemberRequest;
-import com.backend.domains.member.dto.request.UpdateAutoTradeStateRequest;
-import com.backend.domains.member.enums.AutoTradeState;
 import com.backend.domains.member.service.MemberService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,7 +31,6 @@ import lombok.RequiredArgsConstructor;
 public class MemberController {
 
 	private final MemberService memberService;
-	private final MemberLoader memberLoader;
 	private final JwtTokenProvider jwtTokenProvider;
 
 	@PostMapping("/signup")
@@ -67,10 +62,10 @@ public class MemberController {
 		summary = "회원 탈퇴",
 		description = "회원 탈퇴"
 	)
-	public ResponseEntity<DataResponse<Void>> deleteMember() {
-		Member member = memberLoader.getMember();
-
-		memberService.deleteMember(member);
+	public ResponseEntity<DataResponse<Void>> deleteMember(
+		@AuthenticationPrincipal Long memberId
+	) {
+		memberService.deleteMember(memberId);
 
 		return ResponseEntity.ok(DataResponse.ok());
 	}
@@ -79,27 +74,14 @@ public class MemberController {
 	@Operation(
 		summary = "로그아웃",
 		description = "로그아웃"
-
 	)
-	public ResponseEntity<DataResponse<Void>> logoutMember(HttpServletRequest request) {
-		Member member = memberLoader.getMember();
+	public ResponseEntity<DataResponse<Void>> logoutMember(
+		@AuthenticationPrincipal Long memberId,
+		HttpServletRequest request
+	) {
 		String accessToken = jwtTokenProvider.extractAccessToken(request).orElse(null);
 
-		memberService.logoutMember(member, accessToken);
-
-		return ResponseEntity.ok(DataResponse.ok());
-	}
-
-	@PatchMapping("/auto-trade")
-	@Operation(
-		summary = "자동거래 상태 변경",
-		description = "자동거래 상태 변경"
-	)
-	public ResponseEntity<DataResponse<Void>> updateAutoTradeState(@RequestBody UpdateAutoTradeStateRequest request) {
-		Member member = memberLoader.getMember();
-		AutoTradeState autoTradeState = request.getAutoTradeState();
-
-		memberService.updateAutoTradeState(member, autoTradeState);
+		memberService.logoutMember(memberId, accessToken);
 
 		return ResponseEntity.ok(DataResponse.ok());
 	}

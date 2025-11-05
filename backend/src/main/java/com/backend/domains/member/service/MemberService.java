@@ -70,35 +70,17 @@ public class MemberService {
 
 	// 회원 삭제하기
 	@Transactional
-	public void deleteMember(Member member) {
-		memberRepository.delete(member);
+	public void deleteMember(final Long memberId) {
+		memberRepository.deleteById(memberId);
 	}
 
 	//로그아웃
 	@Transactional
-	public void logoutMember(Member member, String accessToken) {
-		Long memberId = member.getId();
-
+	public void logoutMember(final Long memberId, String accessToken) {
 		// 회원의 refreshToken 삭제
 		refreshTokenRepository.deleteByMemberId(memberId);
 
 		// 같은 accessToken으로 다시 로그인하지 못하도록 블랙리스트에 저장
 		logoutRepository.save(new LogoutToken(UUID.randomUUID().toString(), accessToken));
-	}
-
-	// 자동 거래 상태 변경
-	@Transactional
-	public void updateAutoTradeState(Member member, AutoTradeState autoTradeState) {
-		member.setAutoTradeState(autoTradeState);
-	}
-
-	// 자동 거래를 ON한 모든 멤버 조회
-	public List<Member> findAllAutoTradeOnMember() {
-		return memberRepository.findAllByAutoTradeState(AutoTradeState.ON);
-	}
-
-	// 자동 거래 상태 확인
-	public boolean isAutoTradeStateOn(Member member) {
-		return member.getAutoTradeState() == AutoTradeState.ON;
 	}
 }

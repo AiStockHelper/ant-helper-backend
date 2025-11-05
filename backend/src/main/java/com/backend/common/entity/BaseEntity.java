@@ -1,4 +1,4 @@
-package com.backend.domains.member.domain;
+package com.backend.common.entity;
 
 import java.time.LocalDateTime;
 

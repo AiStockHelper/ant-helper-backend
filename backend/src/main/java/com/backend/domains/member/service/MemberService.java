@@ -55,7 +55,6 @@ public class MemberService {
 			.email(request.getEmail())
 			.pw(encodedPassword)
 			.memberRole(MemberRole.USER) // 기본 권한은 USER
-			.autoTradeState(AutoTradeState.OFF)
 			.build();
 		memberRepository.save(member);
 	}

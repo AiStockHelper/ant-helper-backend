@@ -44,10 +44,6 @@ public class Member extends BaseEntity {
 	@Column(nullable = false)
 	private MemberRole memberRole;
 
-	@Enumerated(EnumType.STRING)
-	@Setter
-	private AutoTradeState autoTradeState;
-
 	@OneToMany(mappedBy = "member", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	private List<Transaction> transactions = new ArrayList<>();
 
@@ -58,12 +54,10 @@ public class Member extends BaseEntity {
 	private Member(
 		String email,
 		String pw,
-		MemberRole memberRole,
-		AutoTradeState autoTradeState
+		MemberRole memberRole
 	) {
 		this.email = email;
 		this.pw = pw;
 		this.memberRole = memberRole;
-		this.autoTradeState = autoTradeState;
 	}
 }

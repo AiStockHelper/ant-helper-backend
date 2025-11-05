@@ -2,12 +2,16 @@ package com.backend.domains.watchList.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import com.backend.domains.member.domain.Member;
+import com.backend.domains.watchList.enums.MarketType;
+
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,33 +23,24 @@ import lombok.NoArgsConstructor;
 public class WatchList {
 
 	@Id
-	@Column(name = "watch_list_id")
+	@Column(name = "id")
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(nullable = false)
+	@Column(name = "member_id", updatable = false)
+	private Long memberId;
+
+	@Column(name = "product_number", updatable = false)
 	private String productNumber;
 
-	@Column(nullable = false)
-	private String name;
-
-	@Column(nullable = false)
-	private String industry;
-
-	@ManyToOne
-	@JoinColumn(name = "member_id")
-	private Member member;
+	@Column(name = "market_type", updatable = false)
+	@Enumerated(EnumType.STRING)
+	private MarketType marketType;
 
 	@Builder
-	private WatchList(String productNumber, String name, String industry, Member member) {
+	private WatchList(final Long memberId, final String productNumber, final MarketType marketType) {
+		this.memberId = memberId;
 		this.productNumber = productNumber;
-		this.name = name;
-		this.industry = industry;
-		setMember(member);
-	}
-
-	private void setMember(Member member) {
-		this.member = member;
-		member.getWatchLists().add(this);
+		this.marketType = marketType;
 	}
 }

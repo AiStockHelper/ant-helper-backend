@@ -9,7 +9,9 @@ import com.backend.domains.watchList.domain.WatchList;
 
 public interface WatchListRepository extends JpaRepository<WatchList, Long> {
 
-	Page<WatchList> findAllByMember(Member member, Pageable pageable);
+	Page<WatchList> findAllByMemberId(Long memberId, Pageable pageable);
 
-	int countByMember(Member member);
+	int countByMemberId(Long memberId);
+
+	void deleteByIdAndMemberId(Long id, Long memberId);
 }

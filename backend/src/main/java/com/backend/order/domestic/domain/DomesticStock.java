@@ -1,6 +1,6 @@
 package com.backend.order.domestic.domain;
 
-import com.backend.domains.member.domain.BaseEntity;
+import com.backend.common.entity.BaseEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

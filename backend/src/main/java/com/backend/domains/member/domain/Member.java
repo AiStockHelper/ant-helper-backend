@@ -3,6 +3,7 @@ package com.backend.domains.member.domain;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.backend.common.entity.BaseEntity;
 import com.backend.domains.member.enums.MemberRole;
 import com.backend.domains.transaction.domain.Transaction;
 

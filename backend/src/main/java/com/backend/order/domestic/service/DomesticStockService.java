@@ -2,6 +2,7 @@ package com.backend.order.domestic.service;
 
 import static com.backend.common.exception.ErrorCode.*;
 
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ import com.backend.order.kis.kis_api.api.rest.trading.OrderCashResult;
 import com.backend.order.kis.kis_client.KisClient;
 import com.backend.order.kis.kis_client.config.Configuration;
 import com.backend.order.kis.kis_client.config.Credentials;
+import com.backend.order.kis.kis_client.exception.KisClientException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,8 +35,12 @@ public class DomesticStockService {
 	private final MemberAccountRepository memberAccountRepository;
 
 	// 국내주식 가격 조회
-	public InquirePriceResult getStockPrice(final Long memberId, final Long memberAccountId,
-		final String productNumber) {
+	@Tool(name = "get_korean_stock_price", description = "특정 국내주식의 현재 가격을 조회합니다.")
+	public InquirePriceResult getStockPrice(
+		final Long memberId,
+		final Long memberAccountId,
+		final String productNumber
+	) {
 		// 유저만의 계정 정보 조회
 		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
 			.orElseThrow(() -> ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND));
@@ -47,13 +53,14 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] getStockPrice - 가격 조회 실패: {}", result.getMsg1());
-			throw ApiException.from(KIS_CLIENT_ERROR);
+			throw new KisClientException(result.getMsg1());
 		}
 
 		return result;
 	}
 
 	// 국내주식 매수
+	@Tool(name = "buy_korean_stock", description = "국내주식을 매수합니다.")
 	public OrderCashResult buyStock(final Long memberId, final Long memberAccountId, DomesticTradeRequest request) {
 		// 유저만의 계정 정보 조회
 		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
@@ -77,13 +84,14 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] buyStock - 매수 주문 실패: {}", result.getMsg1());
-			throw ApiException.from(KIS_CLIENT_ERROR);
+			throw new KisClientException(result.getMsg1());
 		}
 
 		return result;
 	}
 
 	// 국내주식 매도
+	@Tool(name = "sell_korean_stock", description = "국내주식을 매도합니다.")
 	public OrderCashResult sellStock(final Long memberId, final Long memberAccountId, DomesticTradeRequest request) {
 		// 유저만의 계정 정보 조회
 		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
@@ -107,13 +115,14 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] sellStock - 매도 주문 실패: {}", result.getMsg1());
-			throw ApiException.from(KIS_CLIENT_ERROR);
+			throw new KisClientException(result.getMsg1());
 		}
 
 		return result;
 	}
 
 	// 국내주식 잔고 조회
+	@Tool(name = "get_korean_stock_balance", description = "국내주식 잔고를 조회합니다.")
 	public InquireBalanceResult getBalance(final Long memberId, final Long memberAccountId) {
 		// 유저만의 계정 정보 조회
 		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
@@ -132,7 +141,7 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] getBalance - 잔고 조회 실패: {}", result.getMsg1());
-			throw ApiException.from(KIS_CLIENT_ERROR);
+			throw new KisClientException(result.getMsg1());
 		}
 
 		return result;
@@ -160,7 +169,7 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] validateAccountExists - 계좌 인증 실패: {}", result.getMsg1());
-			throw ApiException.from(KIS_ACCOUNT_NOT_FOUND);
+			throw new KisClientException(result.getMsg1());
 		}
 	}
 

@@ -1,10 +1,6 @@
 package com.backend.common.dto;
 
-import java.time.LocalDateTime;
-
 import org.springframework.http.HttpStatus;
-
-import com.fasterxml.jackson.annotation.JsonFormat;
 
 import lombok.Getter;
 

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,7 +19,6 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import com.backend.common.dto.ErrorResponse;
 import com.backend.order.kis.kis_client.exception.KisClientException;
 
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -31,16 +29,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	public ResponseEntity<Object> handleApiException(ApiException e) {
 		log.warn("handleApiException", e);
 
-		return makeErrorResponseEntity(e.getErrorCode());
+		return makeErrorResponseEntityWithReasons(e.getErrorCode());
 	}
 
-	// KisClientException 처리
+	// KisClientException 처리 -> KisLibrary 내부 에러
 	@ExceptionHandler(KisClientException.class)
 	public ResponseEntity<Object> handleKisClientException(KisClientException e) {
 		log.warn("handleKisClientException", e);
 
+		// ErrorCode는 KIS_CLIENT_ERROR로 고정하되, 내부 메시지는 KisClientException의 메시지를 사용
 		ErrorCode errorCode = ErrorCode.KIS_CLIENT_ERROR;
-		return makeErrorResponseEntity(errorCode);
+		return ResponseEntity
+			.status(errorCode.getHttpStatus())
+			.body(ErrorResponse.of(errorCode, e.getMessage()));
 	}
 
 	@Override
@@ -53,7 +54,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 		ErrorCode errorCode = ErrorCode.RESOURCE_NOT_FOUND;
 
-		return makeErrorResponseEntity(errorCode);
+		return makeErrorResponseEntityWithReasons(errorCode);
 	}
 
 	@Override
@@ -70,7 +71,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			.collect(Collectors.toList());
 
 		ErrorCode errorCode = ErrorCode.INVALID_PARAMETER;
-		return makeErrorResponseEntity(errorCode, messages);
+		return makeErrorResponseEntityWithReasons(errorCode, messages);
 	}
 
 	@Override
@@ -82,7 +83,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		log.warn("handleHttpMessageNotReadableException", ex);
 
 		ErrorCode errorCode = ErrorCode.BAD_REQUEST;
-		return makeErrorResponseEntity(errorCode);
+		return makeErrorResponseEntityWithReasons(errorCode);
 	}
 
 	@Override
@@ -97,7 +98,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			.toList();
 
 		ErrorCode errorCode = ErrorCode.INVALID_PARAMETER;
-		return makeErrorResponseEntity(errorCode, messages);
+		return makeErrorResponseEntityWithReasons(errorCode, messages);
 	}
 
 	@ExceptionHandler({Exception.class})
@@ -105,18 +106,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		log.warn("handleAllException", e);
 
 		ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
-		return makeErrorResponseEntity(errorCode);
+		return makeErrorResponseEntityWithReasons(errorCode);
 	}
 
 	// ErrorCode를 받아서 Response를 만드는 메서드
-	private ResponseEntity<Object> makeErrorResponseEntity(ErrorCode errorCode) {
+	private ResponseEntity<Object> makeErrorResponseEntityWithReasons(ErrorCode errorCode) {
 		return ResponseEntity
 			.status(errorCode.getHttpStatus())
 			.body(ErrorResponse.from(errorCode));
 	}
 
 	// ErrorCode와 메시지 리스트를 받아서 Response를 만드는 메서드
-	private ResponseEntity<Object> makeErrorResponseEntity(ErrorCode errorCode, List<String> message) {
+	private ResponseEntity<Object> makeErrorResponseEntityWithReasons(ErrorCode errorCode, List<String> message) {
 		return ResponseEntity
 			.status(errorCode.getHttpStatus())
 			.body(ErrorResponse.of(errorCode, message));

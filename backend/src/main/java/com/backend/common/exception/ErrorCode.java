@@ -43,10 +43,8 @@ public enum ErrorCode {
 	// 한국 투자 증권 관련 요류
 	KIS_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 계좌를 찾을 수 없습니다.", "KIS-001"),
 	KIS_CLIENT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "요청에서 오류가 발생하였습니다.", "KIS-002"),
-	APP_KEY_OR_SECRET_KEY_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 앱키 또는 시크릿키를 찾을 수 없습니다.", "KIS-003"),
-	KIS_ACCESS_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "한국 투자 증권 api의 액세스 토큰을 찾을 수 없습니다.", "KIS-004"),
+	KIS_PAPER_ACCOUNT_CANT_USE(HttpStatus.BAD_REQUEST, "모의투자 계좌는 해당 기능을 사용할 수 없습니다.", "KIS-003"),
 	TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 거래를 찾을 수 없습니다.", "KIS-005"),
-	STOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 주식을 찾을 수 없습니다.", "KIS-006"),
 	TRANSACTION_DUPLICATE(HttpStatus.CONFLICT, "이미 거래가 존재합니다", "KIS-007"),
 	PRODUCT_NUMBER_DUPLICATE(HttpStatus.CONFLICT, "Product Number가 중복됩니다.", "KIS-008"),
 

@@ -16,6 +16,7 @@ import com.backend.domains.member.repository.MemberAccountRepository;
 import com.backend.order.domestic.dto.request.DomesticTradeRequest;
 import com.backend.order.domestic.dto.request.InquireDailyOrderExecutionRequest;
 import com.backend.order.domestic.dto.request.ModifyOrderRequest;
+import com.backend.order.domestic.dto.request.ReserveOrderRequest;
 import com.backend.order.kis.enums.AccountType;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceApi;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceResult;
@@ -25,6 +26,8 @@ import com.backend.order.kis.kis_api.api.rest.trading.InquireDailyCcldApi;
 import com.backend.order.kis.kis_api.api.rest.trading.InquireDailyCcldResult;
 import com.backend.order.kis.kis_api.api.rest.trading.OrderCashApi;
 import com.backend.order.kis.kis_api.api.rest.trading.OrderCashResult;
+import com.backend.order.kis.kis_api.api.rest.trading.OrderResvApi;
+import com.backend.order.kis.kis_api.api.rest.trading.OrderResvResult;
 import com.backend.order.kis.kis_api.api.rest.trading.OrderResvRvsecnclApi;
 import com.backend.order.kis.kis_api.api.rest.trading.OrderResvRvsecnclResult;
 import com.backend.order.kis.kis_client.KisClient;
@@ -128,6 +131,43 @@ public class DomesticStockService {
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] sellStock - 매도 주문 실패: {}", result.getMsg1());
 			throw new KisClientException(result.getMsg1());
+		}
+
+		return result;
+	}
+
+	// 국내주식 예약 주문
+	@Tool(name = "reserve_korean_stock_order", description = "국내주식 주문을 예약합니다. 예약주문 가능시간 : 15시 40분 ~ 다음 영업일 7시 30분, 서버 초기화 작업 시 예약주문 불가 : 23시 40분 ~ 00시 10분")
+	public OrderResvResult reserveOrder(
+		final Long memberId,
+		final Long memberAccountId,
+		ReserveOrderRequest request
+	) {
+		// 유저만의 계정 정보 조회
+		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
+			.orElseThrow(() -> ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND));
+
+		KisClient client = createKisClient(memberAccount);
+		OrderResvApi api = new OrderResvApi(
+			request.productNumber(),
+			request.quantity().toString(),
+			request.orderUnitPrice().toString(),
+			request.sellOrBuy(),
+			request.orderDivisionCode(),
+			request.reservationOrderEndDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+		);
+
+		// 모의투자시 사용불가
+		if (memberAccount.getAccountType() == AccountType.PAPER_TRADE) {
+			throw ApiException.from(KIS_PAPER_ACCOUNT_CANT_USE);
+		}
+
+		OrderResvResult result = client.execute(api);
+
+		// 응답 예외처리
+		if (!result.getRtCd().equals("0")) {
+			log.error("[DomesticStockService] reserveOrder - 예약 주문 실패: {}", result.getMsg());
+			throw new KisClientException(result.getMsg());
 		}
 
 		return result;

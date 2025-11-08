@@ -57,7 +57,8 @@ public class OrderResvApi extends CommonRestApi<OrderResvResult> {
      * 02 : 매수
      */
     @Body
-    private String sllBuyDvsnCd = "02";
+    @NonNull
+    private String sllBuyDvsnCd;
 
     /**
      * 주문구분코드
@@ -68,7 +69,8 @@ public class OrderResvApi extends CommonRestApi<OrderResvResult> {
      * 05 : 장전 시간외
      */
     @Body
-    private String ordDvsnCd = "01";
+    @NonNull
+    private String ordDvsnCd;
 
     /**
      * 주문대상잔고구분코드

@@ -14,11 +14,13 @@ public class FindWatchListResponse {
 
 	private Long id;
 	private String productNumber;
+	private String name;
 
-	public static FindWatchListResponse from(WatchList watchList) {
+	public static FindWatchListResponse of(WatchList watchList, String name) {
 		return new FindWatchListResponse(
 			watchList.getId(),
-			watchList.getProductNumber()
+			watchList.getProductNumber(),
+			name
 		);
 	}
 }

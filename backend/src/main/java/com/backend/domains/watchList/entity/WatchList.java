@@ -21,10 +21,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
-	name = "watch_list",
-	uniqueConstraints = {
-		@UniqueConstraint(columnNames = {"member_id", "product_number", "market_type"})
-	}
+	name = "watch_list"
 )
 public class WatchList {
 
@@ -36,7 +33,7 @@ public class WatchList {
 	@Column(name = "member_id", updatable = false, nullable = false)
 	private Long memberId;
 
-	@Column(name = "product_number", updatable = false, nullable = false)
+	@Column(name = "product_number", updatable = false, nullable = false, unique = true)
 	private String productNumber;
 
 	@Column(name = "market_type", updatable = false, nullable = false)

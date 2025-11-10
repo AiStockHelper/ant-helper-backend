@@ -16,6 +16,7 @@ import com.backend.domains.member.repository.MemberAccountRepository;
 import com.backend.order.domestic.dto.request.DomesticTradeRequest;
 import com.backend.order.domestic.dto.request.InquireDailyOrderExecutionRequest;
 import com.backend.order.domestic.dto.request.ModifyOrderRequest;
+import com.backend.order.domestic.dto.request.ReserveOrderModificationRequest;
 import com.backend.order.domestic.dto.request.ReserveOrderRequest;
 import com.backend.order.kis.enums.AccountType;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceApi;
@@ -45,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class DomesticStockService {
 
+	// 멤버 관련
 	private final MemberAccountRepository memberAccountRepository;
 
 	// 국내주식 가격 조회
@@ -167,6 +169,76 @@ public class DomesticStockService {
 		// 응답 예외처리
 		if (!result.getRtCd().equals("0")) {
 			log.error("[DomesticStockService] reserveOrder - 예약 주문 실패: {}", result.getMsg());
+			throw new KisClientException(result.getMsg());
+		}
+
+		return result;
+	}
+
+	// 국내주식 예약 주문 정정
+	@Tool(name = "reserve_korean_stock_order_modification", description = "국내주식 예약 주문을 정정합니다.")
+	public OrderResvRvsecnclResult reserveOrderModification(
+		final Long memberId,
+		final Long memberAccountId,
+		ReserveOrderModificationRequest request
+	) {
+		// 유저만의 계정 정보 조회
+		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
+			.orElseThrow(() -> ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND));
+
+		KisClient client = createKisClient(memberAccount);
+		OrderResvRvsecnclApi api = new OrderResvRvsecnclApi();
+		api.setTrId("CTSC0013U");
+		api.setPdno(request.productNumber());
+		api.setOrdQty(request.quantity().toString());
+		api.setOrdUnpr(request.orderUnitPrice().toString());
+		api.setSllBuyDvsnCd(request.sellOrBuy());
+		api.setOrdDvsnCd(request.orderDivisionCode());
+		api.setRsvnOrdSeq(request.reservationOrderSequence());
+		api.setRsvnOrdEndDt(request.reservationOrderEndDate().format(DateTimeFormatter.ofPattern("yyyyMMdd")));
+
+		// 모의투자시 사용불가
+		if (memberAccount.getAccountType() == AccountType.PAPER_TRADE) {
+			throw ApiException.from(KIS_PAPER_ACCOUNT_CANT_USE);
+		}
+
+		OrderResvRvsecnclResult result = client.execute(api);
+
+		// 응답 예외처리
+		if (!result.getRtCd().equals("0")) {
+			log.error("[DomesticStockService] reserveOrderModification - 예약 주문 정정 실패: {}", result.getMsg());
+			throw new KisClientException(result.getMsg());
+		}
+
+		return result;
+	}
+
+	// 국내주식 예약 주문 취소
+	@Tool(name = "cancel_korean_stock_reserve_order", description = "국내주식 예약 주문을 취소합니다.")
+	public OrderResvRvsecnclResult cancelReserveOrder(
+		final Long memberId,
+		final Long memberAccountId,
+		final String reservationOrderSequence // 취소할 예약주문번호
+	) {
+		// 유저만의 계정 정보 조회
+		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)
+			.orElseThrow(() -> ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND));
+
+		// 예약 주문 취소
+		KisClient client = createKisClient(memberAccount);
+		OrderResvRvsecnclApi api = new OrderResvRvsecnclApi();
+		api.setRsvnOrdSeq(reservationOrderSequence);
+
+		// 모의투자시 사용불가
+		if (memberAccount.getAccountType() == AccountType.PAPER_TRADE) {
+			throw ApiException.from(KIS_PAPER_ACCOUNT_CANT_USE);
+		}
+
+		OrderResvRvsecnclResult result = client.execute(api);
+
+		// 응답 예외처리
+		if (!result.getRtCd().equals("0")) {
+			log.error("[DomesticStockService] cancelReserveOrder - 예약 주문 취소 실패: {}", result.getMsg());
 			throw new KisClientException(result.getMsg());
 		}
 

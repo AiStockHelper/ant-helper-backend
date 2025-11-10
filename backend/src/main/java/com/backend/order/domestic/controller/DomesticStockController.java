@@ -13,9 +13,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.common.dto.DataResponse;
+import com.backend.common.dto.PageResponse;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.swagger.ApiErrorMapping;
 import com.backend.order.domestic.dto.request.DomesticTradeRequest;
+import com.backend.order.domestic.dto.request.GetDomesticStocksResponse;
 import com.backend.order.domestic.service.DomesticStockService;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceResult;
 import com.backend.order.kis.kis_api.api.rest.trading.InquireBalanceResult;
@@ -27,6 +29,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "STOCK API", description = "주식에 대한 API입니다.")
@@ -36,6 +39,20 @@ import lombok.RequiredArgsConstructor;
 public class DomesticStockController {
 
 	private final DomesticStockService domesticStockService;
+
+	@GetMapping
+	@Operation(
+		summary = "국내 주식 종목 목록 조회",
+		description = "국내 주식 종목 목록 조회 API입니다."
+	)
+	public ResponseEntity<DataResponse<PageResponse<GetDomesticStocksResponse>>> getDomesticStocks(
+		@RequestParam(defaultValue = "0") @Min(value = 0, message = "페이지는 0 이상이어야 합니다") int page,
+		@RequestParam(defaultValue = "10") @Min(value = 1, message = "페이지 크기는 1 이상이어야 합니다") int size
+	) {
+		PageResponse<GetDomesticStocksResponse> response = domesticStockService.getDomesticStocks(page, size);
+
+		return ResponseEntity.ok(DataResponse.from(response));
+	}
 
 	@PostMapping("/buy")
 	@Operation(
@@ -62,8 +79,7 @@ public class DomesticStockController {
 		description = "국내 주식 매도 API입니다."
 	)
 	@ApiErrorMapping({
-		MEMBER_ACCOUNT_NOT_FOUND,
-		ErrorCode.KIS_CLIENT_ERROR
+		MEMBER_ACCOUNT_NOT_FOUND
 	})
 	public ResponseEntity<DataResponse<OrderCashResult>> sellStock(
 		@AuthenticationPrincipal Long memberId,

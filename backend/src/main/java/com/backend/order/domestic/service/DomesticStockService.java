@@ -4,20 +4,28 @@ import static com.backend.common.exception.ErrorCode.*;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.backend.common.dto.PageResponse;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
 import com.backend.domains.member.domain.MemberAccount;
 import com.backend.domains.member.repository.MemberAccountRepository;
 import com.backend.order.domestic.dto.request.DomesticTradeRequest;
+import com.backend.order.domestic.dto.request.GetDomesticStocksResponse;
 import com.backend.order.domestic.dto.request.InquireDailyOrderExecutionRequest;
 import com.backend.order.domestic.dto.request.ModifyOrderRequest;
 import com.backend.order.domestic.dto.request.ReserveOrderModificationRequest;
 import com.backend.order.domestic.dto.request.ReserveOrderRequest;
+import com.backend.order.domestic.repository.DomesticStockRepository;
 import com.backend.order.kis.enums.AccountType;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceApi;
 import com.backend.order.kis.kis_api.api.rest.quotations.InquirePriceResult;
@@ -48,6 +56,33 @@ public class DomesticStockService {
 
 	// 멤버 관련
 	private final MemberAccountRepository memberAccountRepository;
+
+	// 국내 주식 관련
+	private final DomesticStockRepository domesticStockRepository;
+
+	// 이름으로 종목 코드 검색
+	@Tool(
+		name = "find_stock_code",
+		description = "주식 이름으로 종목 코드를 검색합니다. 부분 이름도 허용됩니다."
+	)
+	public List<GetDomesticStocksResponse> findStockCode(
+		@ToolParam(description = "검색할 주식 이름 (예: 삼성전자, 카카오)") String name
+	) {
+		return domesticStockRepository.findByNameContaining(name)
+			.stream()
+			.map(GetDomesticStocksResponse::from)
+			.toList();
+	}
+
+	// 국내주식 목록 조회
+	@Tool(name = "list_korean_stocks", description = "국내주식 목록을 조회합니다.")
+	public PageResponse<GetDomesticStocksResponse> getDomesticStocks(final int page, final int size) {
+		Pageable pageable = PageRequest.of(page, size);
+
+		Page<GetDomesticStocksResponse> response = domesticStockRepository.findAll(pageable)
+			.map(GetDomesticStocksResponse::from);
+		return PageResponse.of(response);
+	}
 
 	// 국내주식 가격 조회
 	@Tool(name = "get_korean_stock_price", description = "특정 국내주식의 현재 가격을 조회합니다.")

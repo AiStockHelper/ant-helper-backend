@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class DomesticStock extends BaseEntity {
+public class DomesticStock {
 
 	@Id
 	@Column(name = "stock_id")

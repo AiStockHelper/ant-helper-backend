@@ -1,4 +1,4 @@
-package com.backend.ai.controller;
+package com.backend.domains.aiChat.controller;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

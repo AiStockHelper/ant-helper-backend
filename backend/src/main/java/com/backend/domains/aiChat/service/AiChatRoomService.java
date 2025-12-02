@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
-import com.backend.domains.aiChat.dto.ChatContextResetResponse;
+import com.backend.domains.aiChat.dto.response.ChatContextResetResponse;
 import com.backend.domains.aiChat.dto.response.GetChatRoomResponse;
 import com.backend.domains.aiChat.entity.AiChatRoomEntity;
 import com.backend.domains.aiChat.repository.AiChatRoomRepository;

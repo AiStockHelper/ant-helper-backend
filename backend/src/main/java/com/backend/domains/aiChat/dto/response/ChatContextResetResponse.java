@@ -1,4 +1,4 @@
-package com.backend.domains.aiChat.dto;
+package com.backend.domains.aiChat.dto.response;
 
 import java.time.LocalDateTime;
 

@@ -17,7 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.backend.common.dto.DataResponse;
 import com.backend.common.dto.PageResponse;
 import com.backend.common.swagger.ApiErrorMapping;
-import com.backend.domains.aiChat.dto.ChatContextResetResponse;
+import com.backend.domains.aiChat.dto.response.ChatContextResetResponse;
 import com.backend.domains.aiChat.dto.request.ChatMessageRequest;
 import com.backend.domains.aiChat.dto.response.ChatMessageResponse;
 import com.backend.domains.aiChat.dto.response.GetChatRoomResponse;

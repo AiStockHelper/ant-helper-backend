@@ -4,7 +4,6 @@ import static com.backend.common.exception.ErrorCode.*;
 import static com.backend.domains.aiChat.enums.AiChatStatus.*;
 import static com.backend.domains.aiChat.enums.SenderType.*;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +14,8 @@ import com.backend.domains.aiChat.entity.AiChatMessageEntity;
 import com.backend.domains.aiChat.enums.AiChatStatus;
 import com.backend.domains.aiChat.repository.AiChatMessageRepository;
 import com.backend.domains.watchList.WatchListService;
-import com.backend.infra.ai.chat.dto.llm.gpt.GptChatResponseDto;
+import com.backend.domains.aiChat.dto.dto.GptChatResponseDto;
+import com.backend.infra.ai.chat.service.LLMService;
 import com.backend.order.domestic.service.DomesticStockService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -37,7 +37,7 @@ public class AiChatServerService {
 	private final AiChatRoomService aiChatRoomService;
 
 	// 채팅 관련
-	private final ChatClient chatClient;
+	private final LLMService llmService;
 
 	// 국내 주식 관련
 	private final DomesticStockService domesticStockService;
@@ -116,13 +116,11 @@ public class AiChatServerService {
 			Do not include Markdown formatting, code fences, or extra text.
 			Only output JSON with two fields: response and newSummary.
 			""";
-		final String jsonResponse = chatClient.prompt()
-			.system(systemPrompt)
-			.user("Chat summary so far: " + chatSummary + "\nUser message: " + textContent + "memberAccountId:"
-				+ memberAccountId + ", memberId:" + memberId)
-			.tools(domesticStockService, watchListService)
-			.call()
-			.content();
+
+		final String userPrompt = "Chat summary so far: " + chatSummary + "\nUser message: " + textContent
+			+ "memberAccountId:" + memberAccountId + ", memberId:" + memberId;
+
+		String jsonResponse = llmService.prompt(systemPrompt, userPrompt);
 
 		try {
 			return objectMapper.readValue(jsonResponse, GptChatResponseDto.class);

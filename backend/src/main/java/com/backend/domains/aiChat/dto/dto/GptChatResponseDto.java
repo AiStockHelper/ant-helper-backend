@@ -1,4 +1,4 @@
-package com.backend.infra.ai.chat.dto.llm.gpt;
+package com.backend.domains.aiChat.dto.dto;
 
 public record GptChatResponseDto(String response, String newSummary) {
 }

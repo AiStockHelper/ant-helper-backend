@@ -1,11 +1,11 @@
 package com.backend.domains.aiChat.service;
 
+import static com.backend.common.exception.ErrorCode.*;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
-import com.backend.common.exception.ErrorCode;
 import com.backend.domains.aiChat.dto.ChatContextResetResponse;
 import com.backend.domains.aiChat.dto.response.GetChatRoomResponse;
 import com.backend.domains.aiChat.entity.AiChatRoomEntity;
@@ -36,7 +36,7 @@ public class AiChatRoomService {
 	@Transactional(readOnly = true)
 	public GetChatRoomResponse getChatRoom(final long memberId) {
 		AiChatRoomEntity aiChatRoom = aiChatRoomRepository.findByMemberId(memberId)
-			.orElseThrow(() -> new ApiException(ErrorCode.AI_CHAT_ROOM_NOT_FOUND));
+			.orElseThrow(() -> new ApiException(AI_CHAT_ROOM_NOT_FOUND));
 		return GetChatRoomResponse.from(aiChatRoom);
 	}
 
@@ -45,7 +45,7 @@ public class AiChatRoomService {
 	public ChatContextResetResponse resetContext(final long memberId) {
 		AiChatRoomEntity permission = aiChatRoomRepository
 			.findByMemberId(memberId)
-			.orElseThrow(() -> new ApiException(ErrorCode.AI_CHAT_ROOM_NOT_FOUND));
+			.orElseThrow(() -> new ApiException(AI_CHAT_ROOM_NOT_FOUND));
 
 		permission.resetContext();
 		aiChatRoomRepository.save(permission);
@@ -54,5 +54,13 @@ public class AiChatRoomService {
 			permission.getId(),
 			permission.getContextResetAt()
 		);
+	}
+
+	@Transactional
+	public void updateChatSummary(final long memberId, String s) {
+		AiChatRoomEntity aiChatRoom = aiChatRoomRepository.findByMemberId(memberId)
+			.orElseThrow(() -> new ApiException(AI_CHAT_ROOM_NOT_FOUND));
+		aiChatRoom.updateChatSummary(s);
+		aiChatRoomRepository.save(aiChatRoom);
 	}
 }

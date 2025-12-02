@@ -9,7 +9,7 @@ public enum ErrorCode {
 
 	// 공통 예외
 	BAD_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다.", "C-001"),
-	INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "요청 파라미터가 잘 못 되었습니다.", "C-002"),
+	INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "요청 파라미터가 잘못되었습니다.", "C-002"),
 	RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 리소스를 찾을 수 없습니다.", "C-003"),
 	INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부에서 에러가 발생하였습니다.", "C-004"),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "해당 권한이 없습니다.", "C-005"),
@@ -48,6 +48,10 @@ public enum ErrorCode {
 	AI_CHAT_ROOM_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 AI 채팅방이 존재합니다.", "AC-003"),
 	AI_CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 AI 채팅 메시지를 찾을 수 없습니다.", "AC-004"),
 	AI_CHAT_CANNOT_CANCEL(HttpStatus.BAD_REQUEST, "요청 중인 메시지만 취소할 수 있습니다.", "AC-005"),
+	AI_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "요청 ID에 해당하는 메시지를 찾을 수 없습니다.", "AC-006"),
+
+	// LLM 예외
+	AI_REQUEST_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "AI 요청 처리에 실패하였습니다.", "LLM-001"),
 
 	// WatchList 예외
 	TOO_MANY_WATCH_LIST(HttpStatus.TOO_MANY_REQUESTS, "관심 목록의 최대 개수를 초과하였습니다.", "W-001"),

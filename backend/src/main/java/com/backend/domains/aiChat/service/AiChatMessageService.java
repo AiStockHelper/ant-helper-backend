@@ -14,7 +14,6 @@ import com.backend.common.dto.PageResponse;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.util.keyGenerator.KeyGenerator;
-import com.backend.domains.aiChat.aiServer.service.AiServerService;
 import com.backend.domains.aiChat.dto.request.ChatMessageRequest;
 import com.backend.domains.aiChat.dto.response.ChatMessageResponse;
 import com.backend.domains.aiChat.entity.AiChatMessageEntity;
@@ -49,7 +48,7 @@ public class AiChatMessageService {
 
 	// 사용자의 메시지,이미지 저장 후 AI 요청
 	// @Transactional 붙이면 장애남(AiChatMessage가 커밋되기 전에 processAiRequest가 실행되어 MQ에서 메시지를 못찾음)
-	public ChatMessageResponse sendUserMessage(Long memberId, ChatMessageRequest request) {
+	public ChatMessageResponse sendUserMessage(final long memberId, final long memberAccountId, ChatMessageRequest request) {
 		// 채팅방 조회
 		AiChatRoomEntity aiChatRoom = aiChatRoomRepository.findByMemberId(memberId)
 			.orElseThrow(() -> new ApiException(ErrorCode.AI_CHAT_ROOM_NOT_FOUND));
@@ -73,7 +72,7 @@ public class AiChatMessageService {
 		aiChatMessageRepository.save(message);
 
 		// Ai 요청(비동기 처리)
-		aiServerService.processAiRequest(memberId, message.getId());
+		aiServerService.processAiRequest(memberId, memberAccountId, message.getId(), request.textContent());
 
 		return ChatMessageResponse.createResponse(message);
 	}

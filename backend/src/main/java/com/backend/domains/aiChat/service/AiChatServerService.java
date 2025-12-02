@@ -26,7 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor(access = AccessLevel.PROTECTED)
-public class AiServerService {
+public class AiChatServerService {
 
 	// message 관련
 	private final AiResponseSseService aiResponseSseService;

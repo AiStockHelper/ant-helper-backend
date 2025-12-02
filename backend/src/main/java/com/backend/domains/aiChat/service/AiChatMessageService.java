@@ -37,18 +37,18 @@ public class AiChatMessageService {
 	private final AiChatMessageOrderService aiChatMessageOrderService;
 
 	// aiChatRoom 관련
-	private final AiChatRoomService aiChatRoomService;
 	private final AiChatRoomRepository aiChatRoomRepository;
 
 	// aiServer 관련
-	private final AiServerService aiServerService;
+	private final AiChatServerService aiChatServerService;
 
 	// 기타
 	private final KeyGenerator keyGenerator;
 
 	// 사용자의 메시지,이미지 저장 후 AI 요청
 	// @Transactional 붙이면 장애남(AiChatMessage가 커밋되기 전에 processAiRequest가 실행되어 MQ에서 메시지를 못찾음)
-	public ChatMessageResponse sendUserMessage(final long memberId, final long memberAccountId, ChatMessageRequest request) {
+	public ChatMessageResponse sendUserMessage(final long memberId, final long memberAccountId,
+		ChatMessageRequest request) {
 		// 채팅방 조회
 		AiChatRoomEntity aiChatRoom = aiChatRoomRepository.findByMemberId(memberId)
 			.orElseThrow(() -> new ApiException(ErrorCode.AI_CHAT_ROOM_NOT_FOUND));
@@ -72,7 +72,7 @@ public class AiChatMessageService {
 		aiChatMessageRepository.save(message);
 
 		// Ai 요청(비동기 처리)
-		aiServerService.processAiRequest(memberId, memberAccountId, message.getId(), request.textContent());
+		aiChatServerService.processAiRequest(memberId, memberAccountId, message.getId(), request.textContent());
 
 		return ChatMessageResponse.createResponse(message);
 	}

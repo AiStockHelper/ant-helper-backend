@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "ai_chat_messages",
 	indexes = {
 		@Index(name = "idx_member_order", columnList = "member_id, message_order"),
-		@Index(name = "idx_member_created", columnList = "member_id, create_at")
+		@Index(name = "idx_member_created", columnList = "member_id, created_at")
 	})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

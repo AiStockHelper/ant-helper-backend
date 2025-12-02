@@ -34,6 +34,21 @@ public enum ErrorCode {
 	MEMBER_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 회원 계좌를 찾을 수 없습니다.", "MA-001"),
 	DUPLICATE_MEMBER_ACCOUNT(HttpStatus.CONFLICT, "이미 사용되는 회원 계좌입니다.", "MA-024"),
 
+	// Transaction 예외
+	BALANCE_NOT_ENOUGH_EXCEPTION(HttpStatus.BAD_REQUEST, "잔액이 부족합니다.", "T-001"),
+	EFFECTIVE_AT_CANT_NOT_BE_NULL(HttpStatus.BAD_REQUEST, "거래의 effectiveAt은 null일 수 없습니다.", "T-002"),
+	DUPLICATED_DISCARD_EXCEPTION(HttpStatus.CONFLICT, "이미 폐기된 거래입니다.", "T-003"),
+	ACCOUNT_NOT_FOUND_EXCEPTION(HttpStatus.NOT_FOUND, "거래 계좌를 찾을 수 없습니다.", "T-004"),
+	COIN_TRANSFER_SAME_USER_EXCEPTION(HttpStatus.BAD_REQUEST, "자기 자신에게 코인을 양도할 수 없습니다.", "T-005"),
+	COIN_TRANSFER_AMOUNT_INVALID_EXCEPTION(HttpStatus.BAD_REQUEST, "코인 양도 금액은 0보다 커야 합니다.", "T-006"),
+
+	// AiChat 예외
+	AI_CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 AI 채팅방을 찾을 수 없습니다.", "AC-001"),
+	AI_CHAT_MESSAGE_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 AI 채팅 메시지 순서 정보를 찾을 수 없습니다.", "AC-002"),
+	AI_CHAT_ROOM_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 AI 채팅방이 존재합니다.", "AC-003"),
+	AI_CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 AI 채팅 메시지를 찾을 수 없습니다.", "AC-004"),
+	AI_CHAT_CANNOT_CANCEL(HttpStatus.BAD_REQUEST, "요청 중인 메시지만 취소할 수 있습니다.", "AC-005"),
+
 	// WatchList 예외
 	TOO_MANY_WATCH_LIST(HttpStatus.TOO_MANY_REQUESTS, "관심 목록의 최대 개수를 초과하였습니다.", "W-001"),
 

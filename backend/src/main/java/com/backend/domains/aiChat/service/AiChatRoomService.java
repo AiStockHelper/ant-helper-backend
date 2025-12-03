@@ -2,6 +2,8 @@ package com.backend.domains.aiChat.service;
 
 import static com.backend.common.exception.ErrorCode.*;
 
+import java.time.LocalDateTime;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +27,7 @@ public class AiChatRoomService {
 	@Transactional
 	public GetChatRoomResponse createChatRoom(final long memberId) {
 		// 없는 경우에만 저장
-		aiChatRoomRepository.insertIgnore(memberId);
+		aiChatRoomRepository.insertIgnore(memberId, LocalDateTime.now());
 
 		// 채팅방 정보 조회 및 응답
 		AiChatRoomEntity room = aiChatRoomRepository.findByMemberId(memberId).get();

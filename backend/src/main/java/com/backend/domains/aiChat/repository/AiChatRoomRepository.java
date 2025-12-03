@@ -1,5 +1,6 @@
 package com.backend.domains.aiChat.repository;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,6 @@ public interface AiChatRoomRepository extends JpaRepository<AiChatRoomEntity, Lo
 
 	// insertIgnore를 통해 AiChatRoomEntity 생성
 	@Modifying
-	@Query(value = "INSERT IGNORE INTO ai_chat_room (member_id) VALUES (:memberId)", nativeQuery = true)
-	void insertIgnore(@Param("memberId") Long memberId);
+	@Query(value = "INSERT IGNORE INTO ai_chat_rooms (member_id, created_at) VALUES (:memberId, :createdAt)", nativeQuery = true)
+	void insertIgnore(@Param("memberId") Long memberId, LocalDateTime createdAt);
 }

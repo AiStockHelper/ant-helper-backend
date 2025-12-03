@@ -58,7 +58,7 @@ dependencies {
     implementation 'org.glassfish:javax.json:1.1'
     // Spring ai
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
-    implementation 'org.springframework.ai:spring-ai-anthropic'
+    implementation 'org.springframework.ai:spring-ai-starter-model-anthropic'
     // api 이중화를 위한 circuit breaker
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.2.0'

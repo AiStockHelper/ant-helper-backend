@@ -6,7 +6,10 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import lombok.RequiredArgsConstructor;
+
 @Configuration
+@RequiredArgsConstructor
 public class AiConfig {
 
 	private static final String DEFAULT_SYSTEM_PROMPT = """

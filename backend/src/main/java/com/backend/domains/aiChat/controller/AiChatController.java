@@ -54,8 +54,7 @@ public class AiChatController {
 	@Operation(
 		summary = "채팅방 정보 조회",
 		description = """
-			특정 포스트에 대한 사용자의 채팅방 정보를 조회합니다.
-			AI 이미지 생성권이 있어야 합니다.(생성권을 다 소모하더라도 조회는 가능합니다.)
+			채팅방 정보를 조회합니다.
 			"""
 	)
 	@ApiErrorMapping({
@@ -68,14 +67,29 @@ public class AiChatController {
 		return ResponseEntity.ok(DataResponse.from(response));
 	}
 
+	@PostMapping("/room")
+	@Operation(
+		summary = "채팅방 생성",
+		description = """
+			사용자의 채팅방을 생성합니다.
+			채팅방은 한번만 생성할 수 있습니다.
+			"""
+	)
+	@ApiErrorMapping({
+		AI_CHAT_ROOM_ALREADY_EXISTS
+	})
+	public ResponseEntity<DataResponse<GetChatRoomResponse>> createChatRoom(
+		@AuthenticationPrincipal Long memberId
+	) {
+		GetChatRoomResponse response = aiChatRoomService.createChatRoom(memberId);
+		return ResponseEntity.ok(DataResponse.from(response));
+	}
+
 	@PostMapping("/messages")
 	@Operation(
 		summary = "채팅 메시지 전송",
 		description = """
-			AI에게 채팅 메시지, 이미지를 전송합니다.
-			이미지가 없으면 imageId에 null을 입력합니다.
-			
-			이미지는 사전에 업로드되어 있어야 하며, 업로드된 이미지 ID를 함께 전송해야 합니다.
+			AI에게 채팅 메시지를 전송합니다.
 			"""
 	)
 	@ApiErrorMapping({
@@ -118,14 +132,6 @@ public class AiChatController {
 			채팅 메시지 목록을 페이지네이션으로 조회합니다.
 			page를 -1로 조회하면, 가장 마지막 페이지를 조회합니다.
 			senderType을 통해 유저요청(USER)과 AI응답(AI)을 구분할 수 있습니다.
-			
-			status를 통해 GPT 응답 상태를 구분할 수 있습니다.
-			- REQUEST, // 요청 상태 및 요청 완료 상태
-			- REQUEST_PENDING, // AI 요청 대기 상태 -> SSE에 연결하면 응답을 실시간으로 받을 수 있습니다.
-			- REQUEST_FAILED, // AI 요청 실패 상태 -> SSE에 연결해도 답장을 받을 수 없습니다.
-			- REQUEST_CANCELLED, // AI 요청 취소 상태 -> SSE에 연결해도 답장을 받을 수 없습니다.
-			- RESPONSE // AI의 응답을 의미
-			
 			"""
 	)
 	@ApiErrorMapping({
@@ -161,9 +167,9 @@ public class AiChatController {
 	// AI 이미지 생성 상태 실시간 구독 (SSE)
 	@GetMapping("/sse/{requestId}")
 	@Operation(
-		summary = "AI 이미지 생성 상태 실시간 구독 (SSE)",
+		summary = "AI 채팅 실시간 구독 (SSE)",
 		description = """
-			AI 이미지 생성 요청 후, 해당 요청 ID로 SSE 구독을 시작해야 실시간으로 이미지를 받을 수 있습니다.
+			AI 생성 요청 후, 해당 요청 ID로 SSE 구독을 시작해야 실시간으로 채팅을 받을 수 있습니다.
 			서버는 이미지 생성 완료 시 SSE를 통해 이미지를 전송하고 서버연결을 끊습니다.
 			
 			SSE응답 형식은 Message 목록 조회 내용 형식과 유사합니다.
@@ -173,7 +179,6 @@ public class AiChatController {
 			  "senderType": "AI", // AI 응답
 			  "textContent": "안녕하세요! 생성된 메시지입니다.",
 			  "requestId": "req-1234567890",
-			  "imageUrl": "https://example.com/images/1.png", // 없으면 null
 			  "createdAt": "2025-09-24T13:45:00",
 			  "status": "RESPONSE" // 응답이므로 RESPONSE
 			}

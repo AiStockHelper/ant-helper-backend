@@ -39,7 +39,8 @@ public class StockTransactionAccountService {
 	public List<GetTransactionAccountsResponse> getTransactionAccounts(
 		final long memberId
 	) {
-		List<StockTransactionAccount> stockTransactionAccounts = stockTransactionAccountRepository.findAllByMemberId(memberId);
+		List<StockTransactionAccount> stockTransactionAccounts = stockTransactionAccountRepository
+			.findAllByMemberId(memberId);
 
 		return stockTransactionAccounts.stream()
 			.map(account -> new GetTransactionAccountsResponse(

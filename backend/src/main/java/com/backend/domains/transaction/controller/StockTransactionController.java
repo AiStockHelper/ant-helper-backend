@@ -1,7 +1,5 @@
 package com.backend.domains.transaction.controller;
 
-import java.util.List;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,7 +8,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.backend.common.dto.DataResponse;
-import com.backend.domains.transaction.dto.response.GetTransactionAccountsResponse;
 import com.backend.domains.transaction.dto.response.GetTransactionsResponse;
 import com.backend.domains.transaction.service.StockTransactionService;
 

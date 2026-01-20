@@ -23,7 +23,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * Transaction 거래의 단위 거래
+ * Transaction 거래의 단위 거래 내역
  */
 @Table(name = "stock_transactions")
 @Entity

@@ -45,8 +45,9 @@ public class StockTransactionAccount {
 	 * 코인은 기본값 0으로 설정
 	 */
 	@Builder
-	private StockTransactionAccount(Long memberId) {
+	private StockTransactionAccount(Long memberId, Long postedBalance) {
 		this.memberId = memberId;
+		this.postedBalance = postedBalance;
 	}
 
 	// 잔액 업데이트

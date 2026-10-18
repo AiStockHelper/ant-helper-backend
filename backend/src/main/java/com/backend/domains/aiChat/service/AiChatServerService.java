@@ -13,10 +13,7 @@ import com.backend.domains.aiChat.dto.response.ChatMessageResponse;
 import com.backend.domains.aiChat.entity.AiChatMessageEntity;
 import com.backend.domains.aiChat.enums.AiChatStatus;
 import com.backend.domains.aiChat.repository.AiChatMessageRepository;
-import com.backend.domains.watchList.WatchListService;
-import com.backend.domains.aiChat.dto.dto.GptChatResponseDto;
 import com.backend.infra.ai.chat.service.LLMService;
-import com.backend.order.domestic.service.DomesticStockService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.AccessLevel;
@@ -39,12 +36,6 @@ public class AiChatServerService {
 	// 채팅 관련
 	private final LLMService llmService;
 
-	// 국내 주식 관련
-	private final DomesticStockService domesticStockService;
-
-	// watchList 관련
-	private final WatchListService watchListService;
-
 	private final ObjectMapper objectMapper;
 
 	// AiAgent를 통해 해당 메시지 채팅응답용인지, 이미지 생성용인지 구분 후 처리
@@ -58,11 +49,10 @@ public class AiChatServerService {
 		final String prompt
 	) {
 		// 1.AI에게 채팅 생성 요청
-		GptChatResponseDto gptChatResponse = requestChatPrompt(
+		String response = requestChatPrompt(
 			memberId,
 			memberAccountId,
-			prompt,
-			aiChatRoomService.getChatRoom(memberId).chatSummary()
+			prompt
 		);
 
 		// 2.채팅 저장
@@ -77,7 +67,7 @@ public class AiChatServerService {
 			.aiChatRoomId(requestChatMessage.getAiChatRoomId())
 			.messageOrder(messageOrder)
 			.senderType(AI)
-			.textContent(gptChatResponse.response())
+			.textContent(response)
 			.requestId(requestChatMessage.getRequestId())
 			.status(RESPONSE)
 			.build();
@@ -87,8 +77,7 @@ public class AiChatServerService {
 		requestChatMessage.updateStatus(AiChatStatus.REQUEST_REPLIED);
 		aiChatMessageRepository.save(requestChatMessage);
 
-		// 4.채팅룸 요약 업데이트
-		aiChatRoomService.updateChatSummary(memberId, gptChatResponse.newSummary());
+		// 4. 채팅 내용 업데이트
 
 		// 5. SSE로 실시간 응답
 		aiResponseSseService.sendToClient(
@@ -99,34 +88,15 @@ public class AiChatServerService {
 
 	// AI에게 채팅 생성 요청
 	// TODO : 요약을 추후 VECTOR DB로 변경 고려
-	private GptChatResponseDto requestChatPrompt(
+	private String requestChatPrompt(
 		final long memberId,
 		final long memberAccountId,
-		final String textContent,
-		final String chatSummary
+		final String textContent
 	) {
-		final String systemPrompt = """
-			You are a helpful AI assistant.
-			- Use the given chat summary as context.
-			- Respond naturally to the new user message.
-			- Also update the chat summary by including this new interaction.
-			- Speak Korean.
-			
-			Return the result strictly as raw JSON object.
-			Do not include Markdown formatting, code fences, or extra text.
-			Only output JSON with two fields: response and newSummary.
-			""";
+		final String systemPrompt = "";
+		final String userPrompt =
+			"User message: " + textContent + "memberAccountId:" + memberAccountId + ", memberId:" + memberId;
 
-		final String userPrompt = "Chat summary so far: " + chatSummary + "\nUser message: " + textContent
-			+ "memberAccountId:" + memberAccountId + ", memberId:" + memberId;
-
-		String jsonResponse = llmService.prompt(systemPrompt, userPrompt);
-
-		try {
-			return objectMapper.readValue(jsonResponse, GptChatResponseDto.class);
-		} catch (Exception e) {
-			log.error("Failed to parse AI chat response. Raw response: {}", jsonResponse, e);
-			throw new ApiException(AI_REQUEST_FAILED);
-		}
+		return llmService.prompt(systemPrompt, userPrompt);
 	}
 }

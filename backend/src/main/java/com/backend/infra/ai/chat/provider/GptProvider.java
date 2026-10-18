@@ -22,7 +22,6 @@ public class GptProvider implements AiProvider {
 	@Override
 	public String prompt(String systemPrompt, String userPrompt) {
 		return openAiChatClient.prompt()
-			.system(systemPrompt)
 			.user(userPrompt)
 			.tools(domesticStockService, watchListService)
 			.call()

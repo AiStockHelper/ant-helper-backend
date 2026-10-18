@@ -61,10 +61,7 @@ public class DomesticStockService {
 	private final DomesticStockRepository domesticStockRepository;
 
 	// 이름으로 종목 코드 검색
-	@Tool(
-		name = "find_stock_code",
-		description = "주식 이름으로 종목 코드를 검색합니다. 부분 이름도 허용됩니다."
-	)
+	@Tool(name = "find_korean_stock_by_name", description = "국내주식 이름으로 종목 코드를 검색합니다. 오직 종목 코드를 알고자 할 때에만 호출되어야 합니다.")
 	public List<GetDomesticStocksResponse> findStockCode(
 		@ToolParam(description = "검색할 주식 이름 (예: 삼성전자, 카카오)") String name
 	) {
@@ -75,8 +72,10 @@ public class DomesticStockService {
 	}
 
 	// 국내주식 목록 조회
-	@Tool(name = "list_korean_stocks", description = "국내주식 목록을 조회합니다.")
-	public PageResponse<GetDomesticStocksResponse> getDomesticStocks(final int page, final int size) {
+	public PageResponse<GetDomesticStocksResponse> getDomesticStocks(
+		final int page,
+		final int size
+	) {
 		Pageable pageable = PageRequest.of(page, size);
 
 		Page<GetDomesticStocksResponse> response = domesticStockRepository.findAll(pageable)
@@ -85,7 +84,7 @@ public class DomesticStockService {
 	}
 
 	// 국내주식 가격 조회
-	@Tool(name = "get_korean_stock_price", description = "특정 국내주식의 현재 가격을 조회합니다.")
+	@Tool(name = "get_korean_stock_price", description = "특정 국내주식의 현재 가격을 조회합니다. 특정 국내주식의 상품번호를 입력받아 해당 주식의 현재 가격 정보를 반환합니다.")
 	public InquirePriceResult getStockPrice(
 		final Long memberId,
 		final Long memberAccountId,
@@ -351,7 +350,7 @@ public class DomesticStockService {
 	}
 
 	// 국내주식 잔고 조회
-	@Tool(name = "get_korean_stock_balance", description = "국내주식 잔고를 조회합니다.")
+	@Tool(name = "get_korean_stock_balance", description = "계좌 잔고를 조회합니다.")
 	public InquireBalanceResult getBalance(final Long memberId, final Long memberAccountId) {
 		// 유저만의 계정 정보 조회
 		MemberAccount memberAccount = memberAccountRepository.findByIdAndMemberId(memberId, memberAccountId)

@@ -21,7 +21,6 @@ public class ClaudeProvider implements AiProvider {
 
 	public String prompt(String system, String user) {
 		return claudeChatClient.prompt()
-			.system(system)
 			.user(user)
 			.tools(domesticStockService, watchListService)
 			.call()

@@ -58,6 +58,7 @@ public class ChatTools {
 	private final TradePlanner planner;
 	private final ActionService actionService;
 	private final ScheduleService scheduleService;
+	private final com.backend.domains.chat.memory.ChatHistorySearchService historySearch;
 
 	// ─────────────────────────── 시세 ───────────────────────────
 
@@ -391,6 +392,31 @@ public class ChatTools {
 		s.card("scheduled_tasks", List.of(dto));
 		s.summary("예약 " + taskId + " 취소");
 		return map("status", dto.status(), "title", dto.title());
+	}
+
+	// ─────────────────────────── 이전 대화 ───────────────────────────
+
+	@Tool(name = "search_chat_history", description = "사용자의 지난 대화(다른 대화 포함)에서 내용을 찾습니다. "
+		+ "사용자가 '아까', '지난번에', '전에 말했던' 처럼 현재 대화 맥락에 없는 내용을 언급할 때 사용하세요. "
+		+ "검색어를 비우면 최근 대화 목록을 돌려줍니다. 찾지 못하면 기억나지 않는다고 솔직하게 말하세요.")
+	public Object searchChatHistory(
+		@ToolParam(description = "찾을 키워드. 종목명, 금액, 주제 등. 비우면 최근 대화 목록", required = false) String query,
+		ToolContext ctx
+	) {
+		ChatSession s = session(ctx);
+		if (query == null || query.isBlank()) {
+			var recent = historySearch.recent(s.memberId(), s.conversationId(), 5);
+			s.summary("최근 대화 " + recent.size() + "개");
+			return recent.stream().map(c -> map("conversationId", c.conversationId(), "title", c.title(),
+				"lastMessage", c.lastMessagePreview(), "updatedAt", c.updatedAt())).toList();
+		}
+		var hits = historySearch.search(s.memberId(), s.conversationId(), query, 5);
+		s.summary(hits.size() + "건 찾음");
+		if (hits.isEmpty()) {
+			return map("result", "일치하는 이전 대화가 없습니다.", "query", query);
+		}
+		return hits.stream().map(h -> map("conversationId", h.conversationId(), "conversationTitle", h.conversationTitle(),
+			"role", h.role().equals("USER") ? "사용자" : "어시스턴트", "when", h.at(), "snippet", h.snippet())).toList();
 	}
 
 	// ─────────────────────────── 시장 상태 ───────────────────────────

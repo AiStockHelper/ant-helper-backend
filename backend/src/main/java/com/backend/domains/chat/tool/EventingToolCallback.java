@@ -35,7 +35,8 @@ public class EventingToolCallback implements ToolCallback {
 		Map.entry("schedule_recommend_buy", "예약 추천매수 준비"),
 		Map.entry("list_scheduled_tasks", "예약 목록 조회"),
 		Map.entry("cancel_scheduled_task", "예약 취소"),
-		Map.entry("get_market_status", "장 운영 상태 확인")
+		Map.entry("get_market_status", "장 운영 상태 확인"),
+		Map.entry("search_chat_history", "이전 대화 검색")
 	);
 
 	private static final String[] ARG_KEYS = {"symbol", "query", "stock", "productNumber", "market"};

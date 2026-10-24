@@ -42,6 +42,13 @@ public class ChatConversation {
 	@Column(name = "last_message_preview", length = 200)
 	private String lastMessagePreview;
 
+	/** 오래된 대화를 압축한 요약. summarizedUntilId 까지의 메시지를 대체한다. */
+	@Column(name = "summary", columnDefinition = "LONGTEXT")
+	private String summary;
+
+	@Column(name = "summarized_until_id")
+	private Long summarizedUntilId;
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 
@@ -89,6 +96,11 @@ public class ChatConversation {
 		}
 		String flat = text.replaceAll("\\s+", " ").trim();
 		this.lastMessagePreview = flat.length() > 120 ? flat.substring(0, 120) : flat;
+	}
+
+	public void applySummary(String summary, Long summarizedUntilId) {
+		this.summary = summary;
+		this.summarizedUntilId = summarizedUntilId;
 	}
 
 	/** 목록 정렬 갱신용(내용이 안 바뀌어도 updatedAt 을 올린다). */

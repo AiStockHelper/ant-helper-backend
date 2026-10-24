@@ -17,7 +17,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -31,6 +30,7 @@ import com.backend.domains.account.AccountService;
 import com.backend.domains.chat.ai.LlmGateway;
 import com.backend.domains.chat.ai.LlmGateway.Provider;
 import com.backend.domains.chat.ai.SystemPromptFactory;
+import com.backend.domains.chat.memory.ConversationMemory;
 import com.backend.domains.chat.dto.ChatDtos.Action;
 import com.backend.domains.chat.dto.ChatDtos.Card;
 import com.backend.domains.chat.dto.ChatDtos.Message;
@@ -45,7 +45,6 @@ import com.backend.domains.chat.tool.ChatSession;
 import com.backend.domains.chat.tool.ChatTools;
 import com.backend.domains.chat.tool.EventingToolCallback;
 import com.backend.domains.member.domain.MemberAccount;
-import com.fasterxml.jackson.core.type.TypeReference;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +68,7 @@ public class ChatStreamService {
 	private final AccountService accountService;
 	private final LlmGateway llm;
 	private final SystemPromptFactory promptFactory;
+	private final ConversationMemory memory;
 	private final ChatTools chatTools;
 	private final AppProperties props;
 	private final Json json;
@@ -307,8 +307,9 @@ public class ChatStreamService {
 
 		void execute() {
 			MemberAccount account = resolveAccountOrNull();
-			String system = promptFactory.build(account);
-			List<org.springframework.ai.chat.messages.Message> history = history();
+			ConversationMemory.Prepared memoryContext = memory.prepare(conversationId, userMessage.getId());
+			String system = promptFactory.build(account, memoryContext.contextBlock());
+			List<org.springframework.ai.chat.messages.Message> history = memoryContext.window();
 			ChatSession session = new ChatSession(memberId, conversationId, assistantMessage.getId(), this,
 				() -> accountService.resolve(memberId, currentAccountId()));
 			Map<String, Object> toolContext = Map.of("session", session);
@@ -368,6 +369,8 @@ public class ChatStreamService {
 			send("done", Map.of("message", doneMessage));
 			maybeTitle();
 			complete();
+			// 응답을 끝낸 뒤 별도 스레드에서 오래된 대화를 요약한다(다음 메시지를 막지 않도록).
+			Thread.ofVirtual().name("chat-summary-" + conversationId).start(() -> memory.summarizeIfNeeded(conversationId));
 			if (lastError != null) {
 				log.info("폴백 후 응답 완료({})", used);
 			}
@@ -481,40 +484,6 @@ public class ChatStreamService {
 				}
 			}
 			return accountService.findDefault(memberId).orElse(null);
-		}
-
-		List<org.springframework.ai.chat.messages.Message> history() {
-			int limit = props.getLlm().getHistoryLimit();
-			List<ChatMessage> recent = new ArrayList<>(messages.findByConversationIdAndIdLessThanOrderByIdDesc(
-				conversationId, userMessage.getId(), PageRequest.of(0, limit)));
-			java.util.Collections.reverse(recent);
-			List<org.springframework.ai.chat.messages.Message> out = new ArrayList<>();
-			for (ChatMessage m : recent) {
-				String body = m.getContent() == null ? "" : m.getContent();
-				if (m.getRole() == ChatMessage.Role.USER) {
-					if (!body.isBlank()) {
-						out.add(new UserMessage(body));
-					}
-				} else if (m.getStatus() != ChatMessage.Status.STREAMING) {
-					String note = toolNote(m);
-					String full = (body + note).trim();
-					if (!full.isEmpty()) {
-						out.add(new AssistantMessage(full));
-					}
-				}
-			}
-			return out;
-		}
-
-		String toolNote(ChatMessage m) {
-			List<ToolCall> calls = json.read(m.getToolCallsJson(), new TypeReference<List<ToolCall>>() {}, List.of());
-			StringBuilder sb = new StringBuilder();
-			for (ToolCall c : calls) {
-				if ("DONE".equals(c.status()) && c.summary() != null && !c.summary().isBlank()) {
-					sb.append(sb.length() == 0 ? "\n\n(사용한 도구: " : "; ").append(c.label()).append(" → ").append(c.summary());
-				}
-			}
-			return sb.length() == 0 ? "" : sb.append(")").toString();
 		}
 
 		void maybeTitle() {

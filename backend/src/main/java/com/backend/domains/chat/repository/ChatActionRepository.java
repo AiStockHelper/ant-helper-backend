@@ -19,6 +19,8 @@ public interface ChatActionRepository extends JpaRepository<ChatAction, Long> {
 
 	List<ChatAction> findByMessageId(Long messageId);
 
+	List<ChatAction> findByConversationIdOrderByIdDesc(Long conversationId, org.springframework.data.domain.Pageable pageable);
+
 	/** 같은 상태 전이를 두 번 실행하지 않도록 PENDING 일 때만 선점한다. */
 	@Modifying
 	@Query("update ChatAction a set a.status = com.backend.domains.chat.entity.ChatAction.Status.APPROVED "

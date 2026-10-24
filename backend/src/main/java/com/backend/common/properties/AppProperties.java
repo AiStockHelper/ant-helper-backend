@@ -65,7 +65,16 @@ public class AppProperties {
 	@Setter
 	public static class Llm {
 		private int streamTimeoutSeconds = 180;
-		private int historyLimit = 30;
+		/** LLM 에 보내는 최근 대화 메시지 개수 상한 */
+		private int historyLimit = 60;
+		/** 최근 대화 창의 글자 수 예산. 넘으면 오래된 메시지부터 빠지고(요약으로 대체됨) 최신 대화가 우선한다. */
+		private int historyCharBudget = 14000;
+		/** 요약되지 않은 오래된 대화가 이 글자 수를 넘으면 요약을 갱신한다. */
+		private int summaryTriggerChars = 9000;
+		/** 요약하지 않고 원문 그대로 남겨 두는 가장 최근 메시지 수 */
+		private int keepRecentMessages = 8;
+		/** 요약문 최대 길이 */
+		private int summaryMaxChars = 2200;
 	}
 
 	@Getter

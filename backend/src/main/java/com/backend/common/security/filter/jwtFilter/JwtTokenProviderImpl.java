@@ -83,6 +83,7 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
 	public String createRefreshToken() {
 		return Jwts.builder()
 			.setSubject(jwtProperties.getREFRESH_TOKEN_SUBJECT())
+			.setId(java.util.UUID.randomUUID().toString())
 			.setExpiration(new Date(System.currentTimeMillis() + jwtProperties.getRefresh().getExpiration() * 1000L))
 			.signWith(key, SignatureAlgorithm.HS256)
 			.compact();
@@ -188,13 +189,16 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
 				.parseClaimsJws(token);
 			return true;
 		} catch (SecurityException | MalformedJwtException e) {
-			log.info("Invalid JWT Token", e);
+			log.info("Invalid JWT Token: {}", e.getMessage());
 		} catch (ExpiredJwtException e) {
-			log.info("Expired JWT Token", e);
+			log.info("Expired JWT Token");
 		} catch (UnsupportedJwtException e) {
-			log.info("Unsupported JWT Token", e);
+			log.info("Unsupported JWT Token: {}", e.getMessage());
 		} catch (IllegalArgumentException e) {
-			log.info("JWT claims string is empty.", e);
+			log.info("JWT claims string is empty.");
+		} catch (io.jsonwebtoken.JwtException e) {
+			// 서명 불일치(SignatureException) 등 위에서 다루지 않은 모든 JWT 오류는 '유효하지 않음'으로 처리한다.
+			log.info("Invalid JWT signature or format: {}", e.getMessage());
 		}
 		return false;
 	}

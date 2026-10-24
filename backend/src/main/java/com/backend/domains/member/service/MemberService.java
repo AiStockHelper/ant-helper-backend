@@ -30,7 +30,6 @@ public class MemberService {
 
 	// 회원 관련
 	private final MemberRepository memberRepository;
-	private final MemberAccountService memberAccountService;
 
 	// 비밀번호 암호화 유틸
 	private final PasswordEncoderUtil passwordEncoderUtil;

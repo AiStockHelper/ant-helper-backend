@@ -58,6 +58,9 @@ public class SecurityConfig {
 		// url 관리
 		http
 			.authorizeHttpRequests((authorize) -> authorize
+				// SSE(SseEmitter) 완료 시 발생하는 ASYNC 디스패치는 이미 인증된 요청의 연속이므로 다시 막지 않는다.
+				.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC, jakarta.servlet.DispatcherType.ERROR)
+				.permitAll()
 				.requestMatchers(securityProperties.getPermitUrls()).permitAll() // PERMIT_URLS만 바로 접근 가능
 				.anyRequest().authenticated());
 

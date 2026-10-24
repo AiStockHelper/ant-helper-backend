@@ -35,14 +35,27 @@ public class Member extends BaseEntity {
 	@Column(nullable = false)
 	private MemberRole memberRole;
 
+	@Column(name = "nickname", length = 50)
+	private String nickname;
+
 	@Builder
 	private Member(
 		String email,
 		String pw,
-		MemberRole memberRole
+		MemberRole memberRole,
+		String nickname
 	) {
 		this.email = email;
 		this.pw = pw;
 		this.memberRole = memberRole;
+		this.nickname = nickname;
+	}
+
+	public void updateNickname(String nickname) {
+		this.nickname = nickname;
+	}
+
+	public String displayName() {
+		return (nickname == null || nickname.isBlank()) ? email.substring(0, email.indexOf('@')) : nickname;
 	}
 }

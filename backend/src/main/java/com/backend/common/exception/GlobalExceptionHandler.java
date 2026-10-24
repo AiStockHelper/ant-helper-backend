@@ -27,7 +27,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(ApiException.class)
 	public ResponseEntity<Object> handleApiException(ApiException e) {
-		log.warn("handleApiException", e);
+		if (e.getErrorCode().getHttpStatus().is5xxServerError()) {
+			log.warn("handleApiException", e);
+		} else {
+			// 입력 오류/권한 오류 같은 예상 가능한 4xx 는 스택트레이스 없이 한 줄만 남긴다.
+			log.info("handleApiException [{}] {}", e.getErrorCode().getCode(), e.getMessage());
+		}
 
 		return makeErrorResponseEntityWithReasons(e.getErrorCode());
 	}
@@ -63,7 +68,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		HttpHeaders headers,
 		HttpStatusCode status,
 		WebRequest request) {
-		log.warn("handleIllegalArgument", e);
+		log.info("handleMethodArgumentNotValid: {}", e.getBindingResult().getFieldErrors().stream()
+			.map(f -> f.getField() + " " + f.getDefaultMessage()).toList());
 
 		List<String> messages = e.getBindingResult().getFieldErrors()
 			.stream()

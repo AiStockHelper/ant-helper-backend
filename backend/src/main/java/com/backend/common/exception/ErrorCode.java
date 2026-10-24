@@ -24,7 +24,8 @@ public enum ErrorCode {
 	UNAUTHENTICATED_EMAIL(HttpStatus.UNAUTHORIZED, "이메일 인증이 필요합니다.", "S-002"),
 	INVALID_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 액세스 토큰입니다.", "S-003"),
 	INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다.", "S-004"),
-	REISSUE_ACCESS_TOKEN(HttpStatus.PAYMENT_REQUIRED, "액세스 토큰 재발급이 필요합니다.", "S-005"),
+	REISSUE_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "액세스 토큰이 만료되었습니다. 재발급이 필요합니다.", "S-005"),
+	INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.", "S-006"),
 
 	// Member 예외
 	MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 회원을 찾을 수 없습니다.", "M-001"),
@@ -66,6 +67,25 @@ public enum ErrorCode {
 	TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 거래를 찾을 수 없습니다.", "KIS-005"),
 	TRANSACTION_DUPLICATE(HttpStatus.CONFLICT, "이미 거래가 존재합니다", "KIS-007"),
 	PRODUCT_NUMBER_DUPLICATE(HttpStatus.CONFLICT, "Product Number가 중복됩니다.", "KIS-008"),
+
+	// 채팅
+	CONVERSATION_NOT_FOUND(HttpStatus.NOT_FOUND, "대화를 찾을 수 없습니다.", "CH-001"),
+	CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "메시지를 찾을 수 없습니다.", "CH-002"),
+	ACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "확인 요청을 찾을 수 없습니다.", "CH-003"),
+	ACTION_NOT_PENDING(HttpStatus.CONFLICT, "이미 처리되었거나 만료된 확인 요청입니다.", "CH-004"),
+	CHAT_EMPTY_MESSAGE(HttpStatus.BAD_REQUEST, "메시지 내용이 비어 있습니다.", "CH-005"),
+	CHAT_STREAM_BUSY(HttpStatus.CONFLICT, "이 대화는 이미 답변을 생성 중입니다.", "CH-006"),
+
+	// 시세 / 거래
+	STOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "종목을 찾을 수 없습니다.", "MK-001"),
+	MARKET_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "지원하지 않는 시장입니다.", "MK-002"),
+	NO_ACCOUNT_SELECTED(HttpStatus.BAD_REQUEST, "사용할 증권 계좌가 없습니다. 먼저 계좌를 등록해 주세요.", "MK-003"),
+	PREDICTION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "예측 서버를 사용할 수 없습니다.", "MK-004"),
+	NOT_ENOUGH_CANDLES(HttpStatus.UNPROCESSABLE_ENTITY, "예측에 필요한 시세 데이터가 부족합니다.", "MK-005"),
+	ORDER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "1회 주문 한도를 초과했습니다.", "TR-001"),
+	ORDER_INVALID(HttpStatus.BAD_REQUEST, "주문 정보가 올바르지 않습니다.", "TR-002"),
+	SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "예약 작업을 찾을 수 없습니다.", "TR-003"),
+	SCHEDULE_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 없는 예약 작업입니다.", "TR-004"),
 
 	// 기타
 	AUTO_TRADE_STATE_OFF(HttpStatus.INTERNAL_SERVER_ERROR, "자동 거래 상태가 꺼져 있습니다.", "AT-001"),

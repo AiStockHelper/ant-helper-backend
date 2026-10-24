@@ -1,0 +1,63 @@
+market,symbol,name,nameEn
+KRX,005930,삼성전자,Samsung Electronics
+KRX,000660,SK하이닉스,SK hynix
+KRX,373220,LG에너지솔루션,LG Energy Solution
+KRX,207940,삼성바이오로직스,Samsung Biologics
+KRX,005380,현대차,Hyundai Motor
+KRX,000270,기아,Kia
+KRX,068270,셀트리온,Celltrion
+KRX,105560,KB금융,KB Financial Group
+KRX,055550,신한지주,Shinhan Financial Group
+KRX,005490,POSCO홀딩스,POSCO Holdings
+KRX,035420,NAVER,NAVER
+KRX,035720,카카오,Kakao
+KRX,006400,삼성SDI,Samsung SDI
+KRX,051910,LG화학,LG Chem
+KRX,012330,현대모비스,Hyundai Mobis
+KRX,028260,삼성물산,Samsung C&T
+KRX,086790,하나금융지주,Hana Financial Group
+KRX,012450,한화에어로스페이스,Hanwha Aerospace
+KRX,034020,두산에너빌리티,Doosan Enerbility
+KRX,329180,HD현대중공업,HD Hyundai Heavy Industries
+KRX,032830,삼성생명,Samsung Life Insurance
+KRX,009150,삼성전기,Samsung Electro-Mechanics
+KRX,259960,크래프톤,Krafton
+KRX,323410,카카오뱅크,KakaoBank
+KRX,003670,포스코퓨처엠,POSCO Future M
+KRX,066570,LG전자,LG Electronics
+KRX,247540,에코프로비엠,EcoPro BM
+KRX,196170,알테오젠,Alteogen
+KRX,352820,하이브,HYBE
+KRX,017670,SK텔레콤,SK Telecom
+KRX,030200,KT,KT Corp
+KRX,015760,한국전력,Korea Electric Power
+KRX,010140,삼성중공업,Samsung Heavy Industries
+KRX,003490,대한항공,Korean Air
+KRX,086280,현대글로비스,Hyundai Glovis
+KRX,096770,SK이노베이션,SK Innovation
+KRX,010130,고려아연,Korea Zinc
+KRX,316140,우리금융지주,Woori Financial Group
+KRX,042660,한화오션,Hanwha Ocean
+KRX,009540,HD한국조선해양,HD Korea Shipbuilding
+NASDAQ,AAPL,애플,Apple Inc
+NASDAQ,MSFT,마이크로소프트,Microsoft Corp
+NASDAQ,NVDA,엔비디아,NVIDIA Corp
+NASDAQ,AMZN,아마존,Amazon.com Inc
+NASDAQ,GOOGL,알파벳 A,Alphabet Inc Class A
+NASDAQ,META,메타 플랫폼스,Meta Platforms Inc
+NASDAQ,TSLA,테슬라,Tesla Inc
+NASDAQ,AVGO,브로드컴,Broadcom Inc
+NASDAQ,AMD,AMD,Advanced Micro Devices
+NASDAQ,NFLX,넷플릭스,Netflix Inc
+NASDAQ,COST,코스트코,Costco Wholesale
+NASDAQ,PLTR,팔란티어,Palantir Technologies
+NASDAQ,QQQ,인베스코 QQQ,Invesco QQQ Trust
+NYSE,JPM,JP모건 체이스,JPMorgan Chase & Co
+NYSE,V,비자,Visa Inc
+NYSE,UNH,유나이티드헬스,UnitedHealth Group
+NYSE,XOM,엑슨모빌,Exxon Mobil
+NYSE,LLY,일라이 릴리,Eli Lilly and Co
+NYSE,WMT,월마트,Walmart Inc
+NYSE,CRM,세일즈포스,Salesforce Inc
+NYSE,ORCL,오라클,Oracle Corp
+AMEX,SPY,SPDR S&P 500 ETF,SPDR S&P 500 ETF Trust

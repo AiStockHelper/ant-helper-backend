@@ -88,6 +88,9 @@ public class MarketDataService {
 			return List.of();
 		}
 		String q = query.trim();
+		// 검색 품질 개선을 위해 접두 두 글자 기준으로 검색어 통계를 남긴다.
+		String prefix = q.substring(0, 2).toUpperCase(Locale.ROOT);
+		log.info("종목 검색 q={} prefix={} market={} limit={}", q, prefix, market, limit);
 		List<Market> markets = market != null ? List.of(market) : enabledMarkets();
 		// 정렬(정확히 일치 > 접두 일치 > 일반 주식 > 짧은 이름)은 쿼리에서 처리한다.
 		return stockMasterRepository.search(q, markets, PageRequest.of(0, limit)).stream()

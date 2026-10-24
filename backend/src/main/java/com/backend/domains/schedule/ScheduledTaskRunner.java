@@ -22,6 +22,9 @@ public class ScheduledTaskRunner {
 	public void tick() {
 		List<ScheduledTask> due = tasks.findByStatusAndRunAtLessThanEqualOrderByRunAtAsc(
 			ScheduledTask.Status.SCHEDULED, Instant.now());
+		if (!due.isEmpty()) {
+			log.info("실행 시각이 된 예약 {}건을 처리합니다.", due.size());
+		}
 		for (ScheduledTask t : due) {
 			try {
 				scheduleService.execute(t.getId());

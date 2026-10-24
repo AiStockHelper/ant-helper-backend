@@ -96,16 +96,19 @@ public class PredictionClient {
 	}
 
 	private <T> T call(java.util.function.Supplier<T> action) {
+		long start = System.currentTimeMillis();
 		try {
-			return action.get();
+			T result = action.get();
+			log.info("예측 서버 호출 성공 {}ms", System.currentTimeMillis() - start);
+			return result;
 		} catch (HttpClientErrorException.UnprocessableEntity e) {
-			log.info("예측 서버 422: {}", e.getResponseBodyAsString());
+			log.warn("예측 서버 422(시세 데이터 부족): {}", e.getResponseBodyAsString());
 			throw ApiException.of(ErrorCode.NOT_ENOUGH_CANDLES, "예측에 필요한 시세 데이터가 부족합니다.");
 		} catch (ResourceAccessException e) {
-			log.warn("예측 서버 연결 실패: {}", e.getMessage());
+			log.error("예측 서버 연결 실패 {}ms: {}", System.currentTimeMillis() - start, e.getMessage());
 			throw ApiException.from(ErrorCode.PREDICTION_UNAVAILABLE);
 		} catch (RuntimeException e) {
-			log.warn("예측 서버 호출 실패: {}", e.toString());
+			log.error("예측 서버 호출 실패 {}ms: {}", System.currentTimeMillis() - start, e.toString(), e);
 			throw ApiException.from(ErrorCode.PREDICTION_UNAVAILABLE);
 		}
 	}

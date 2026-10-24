@@ -68,7 +68,21 @@ public class KisGateway {
 	}
 
 	public <T extends ApiResult> T execute(MemberAccount account, Api<T> api) {
-		return check(clientFor(account).execute(api));
+		long start = System.currentTimeMillis();
+		String apiName = api.getClass().getSimpleName();
+		try {
+			T result = check(clientFor(account).execute(api));
+			log.info("KIS 호출 성공 account={} api={} {}ms", account.getId(), apiName, System.currentTimeMillis() - start);
+			return result;
+		} catch (KisClientException e) {
+			log.warn("KIS 호출 실패 account={} paper={} api={} {}ms: {}", account.getId(), account.isPaper(), apiName,
+				System.currentTimeMillis() - start, e.getMessage());
+			throw e;
+		} catch (RuntimeException e) {
+			log.error("KIS 호출 중 예외 account={} api={} {}ms: {}", account.getId(), apiName,
+				System.currentTimeMillis() - start, e.toString(), e);
+			throw e;
+		}
 	}
 
 	public <T extends ApiResult> T execute(KisClient client, Api<T> api) {
@@ -93,6 +107,7 @@ public class KisGateway {
 		String rtCd = read(result, "getRtCd");
 		if (rtCd != null && !"0".equals(rtCd)) {
 			String msg = read(result, "getMsg1");
+			log.warn("KIS 응답 오류 rt_cd={} msg_cd={} msg1={}", rtCd, read(result, "getMsgCd"), msg);
 			throw new KisClientException(msg == null || msg.isBlank() ? "한국투자증권 요청이 실패했습니다." : msg);
 		}
 		return result;

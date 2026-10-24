@@ -19,16 +19,23 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import com.backend.common.dto.ErrorResponse;
 import com.backend.order.kis.kis_client.exception.KisClientException;
 
+import com.backend.common.logging.ErrorEventRecorder;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+	private final ErrorEventRecorder recorder;
 
 	@ExceptionHandler(ApiException.class)
 	public ResponseEntity<Object> handleApiException(ApiException e) {
 		if (e.getErrorCode().getHttpStatus().is5xxServerError()) {
-			log.warn("handleApiException", e);
+			log.error("서버 오류 [{}] {}", e.getErrorCode().getCode(), e.getMessage(), e);
+			recorder.record("HTTP", e.getErrorCode().getCode(), e.getMessage(), e);
 		} else {
 			// 입력 오류/권한 오류 같은 예상 가능한 4xx 는 스택트레이스 없이 한 줄만 남긴다.
 			log.info("handleApiException [{}] {}", e.getErrorCode().getCode(), e.getMessage());
@@ -40,7 +47,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	// KisClientException 처리 -> KisLibrary 내부 에러
 	@ExceptionHandler(KisClientException.class)
 	public ResponseEntity<Object> handleKisClientException(KisClientException e) {
-		log.warn("handleKisClientException", e);
+		log.error("KIS 호출 오류: {}", e.getMessage(), e);
+		recorder.record("HTTP", ErrorCode.KIS_CLIENT_ERROR.getCode(), e.getMessage(), e);
 
 		// ErrorCode는 KIS_CLIENT_ERROR로 고정하되, 내부 메시지는 KisClientException의 메시지를 사용
 		ErrorCode errorCode = ErrorCode.KIS_CLIENT_ERROR;
@@ -109,7 +117,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler({Exception.class})
 	public ResponseEntity<Object> handleAllException(Exception e) {
-		log.warn("handleAllException", e);
+		log.error("처리되지 않은 예외: {}", e.toString(), e);
+		recorder.record("HTTP", ErrorCode.INTERNAL_SERVER_ERROR.getCode(), e.getMessage(), e);
 
 		ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
 		return makeErrorResponseEntityWithReasons(errorCode);

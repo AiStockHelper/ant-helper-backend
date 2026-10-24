@@ -67,6 +67,7 @@ public class TradingService {
 	private final KisGateway kis;
 	private final MarketDataService marketData;
 	private final AppProperties props;
+	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
 	// ─────────────────────────── 잔고 ───────────────────────────
 
@@ -241,6 +242,23 @@ public class TradingService {
 		}
 		boolean sell = "SELL".equalsIgnoreCase(req.side());
 		String name = marketData.nameOf(req.market(), req.productNumber());
+		log.info("주문 요청 account={} paper={} market={} side={} symbol={} qty={} limitPrice={}", account.getId(),
+			account.isPaper(), req.market(), req.side(), req.productNumber(), req.quantity(), req.limitPrice());
+		try {
+			OrderOutcome placed = doPlaceOrder(account, req, sell, name);
+			log.info("주문 접수 account={} symbol={} side={} qty={} orderNo={}", account.getId(), req.productNumber(),
+				req.side(), req.quantity(), placed.orderNo());
+			return placed;
+		} catch (com.backend.order.kis.kis_client.exception.KisClientException e) {
+			log.warn("주문 거절 account={} market={} side={} symbol={} qty={}: {}", account.getId(), req.market(),
+				req.side(), req.productNumber(), req.quantity(), e.getMessage());
+			recorder.record("ORDER", account.getId(), "ORDER_REJECTED", e.getMessage(), e,
+				req.market() + " " + req.side() + " " + req.productNumber() + " x" + req.quantity());
+			return outcome(false, e.getMessage(), null, req, name, req.limitPrice());
+		}
+	}
+
+	private OrderOutcome doPlaceOrder(MemberAccount account, OrderRequest req, boolean sell, String name) {
 		try {
 			if (req.market().overseas()) {
 				if (req.limitPrice() == null || req.limitPrice().signum() <= 0) {
@@ -262,7 +280,7 @@ public class TradingService {
 			return outcome(true, "주문이 접수되었습니다.", res.getOutput() == null ? null : res.getOutput().getOdno(), req, name,
 				req.limitPrice());
 		} catch (com.backend.order.kis.kis_client.exception.KisClientException e) {
-			return outcome(false, e.getMessage(), null, req, name, req.limitPrice());
+			throw e;
 		}
 	}
 
@@ -311,6 +329,10 @@ public class TradingService {
 			return new OrderOutcome(true, "주문 취소가 접수되었습니다.", res.getOutput() == null ? orderNo : res.getOutput().getOdno(),
 				"", productNumber, name, market, market.currency(), dec(row.getRmnQty()).longValue(), null);
 		} catch (com.backend.order.kis.kis_client.exception.KisClientException e) {
+			log.warn("주문 취소 실패 account={} market={} symbol={} orderNo={}: {}", account.getId(), market,
+				productNumber, orderNo, e.getMessage());
+			recorder.record("ORDER", account.getId(), "ORDER_CANCEL_FAILED", e.getMessage(), e,
+				market + " " + productNumber + " orderNo=" + orderNo);
 			return new OrderOutcome(false, e.getMessage(), orderNo, "", productNumber, name, market, market.currency(), 0, null);
 		}
 	}

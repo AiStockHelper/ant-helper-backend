@@ -1,18 +1,17 @@
 <included>
     <appender name="FILE-ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
-            <onMatch>ACCEPT</onMatch>
-            <onMismatch>DENY</onMismatch>
         </filter>
         <encoder>
             <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>./log/prod-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/error-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
             <maxFileSize>50MB</maxFileSize>
             <maxHistory>30</maxHistory>
-            <totalSizeCap>3GB</totalSizeCap>
+            <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
     </appender>
 </included>

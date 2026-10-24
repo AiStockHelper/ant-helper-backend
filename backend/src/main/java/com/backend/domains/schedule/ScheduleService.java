@@ -64,6 +64,7 @@ public class ScheduleService {
 	private final ChatMessageRepository messages;
 	private final ChatConversationRepository conversations;
 	private final TransactionTemplate tx;
+	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
 	// ─────────────────────────── 조회/생성/취소 ───────────────────────────
 
@@ -81,8 +82,11 @@ public class ScheduleService {
 	@Transactional
 	public ScheduledTask create(MemberAccount account, Long conversationId, ScheduledTask.Kind kind, String title,
 		Instant runAt, Map<String, Object> params) {
-		return tasks.save(new ScheduledTask(account.getMemberId(), account.getId(), conversationId, kind, title, runAt,
-			json.write(params)));
+		ScheduledTask saved = tasks.save(new ScheduledTask(account.getMemberId(), account.getId(), conversationId, kind,
+			title, runAt, json.write(params)));
+		log.info("예약 등록 taskId={} member={} account={} kind={} runAt={} title={}", saved.getId(), account.getMemberId(),
+			account.getId(), kind, runAt, title);
+		return saved;
 	}
 
 	@Transactional
@@ -93,6 +97,7 @@ public class ScheduleService {
 			throw ApiException.from(ErrorCode.SCHEDULE_NOT_CANCELABLE);
 		}
 		t.cancel();
+		log.info("예약 취소 taskId={} member={}", id, memberId);
 		return mapper.task(t);
 	}
 
@@ -161,6 +166,19 @@ public class ScheduleService {
 		if (task == null) {
 			return;
 		}
+		org.slf4j.MDC.put("memberId", String.valueOf(task.getMemberId()));
+		org.slf4j.MDC.put("reqId", "task-" + taskId);
+		try {
+			runTask(taskId, task);
+		} finally {
+			org.slf4j.MDC.remove("memberId");
+			org.slf4j.MDC.remove("reqId");
+		}
+	}
+
+	private void runTask(Long taskId, ScheduledTask task) {
+		log.info("예약 실행 시작 taskId={} account={} kind={} runAt={}", taskId, task.getAccountId(), task.getKind(),
+			task.getRunAt());
 		ScheduledTask.Status finalStatus;
 		String message;
 		List<OrderOutcome> outcomes = new ArrayList<>();
@@ -183,13 +201,20 @@ public class ScheduleService {
 				message = note;
 			}
 		} catch (RuntimeException e) {
-			log.warn("예약 작업 {} 실행 실패: {}", taskId, e.getMessage());
+			log.error("예약 작업 {} 실행 실패 account={}: {}", taskId, task.getAccountId(), e.toString(), e);
 			finalStatus = ScheduledTask.Status.FAILED;
 			message = e instanceof ApiException ? e.getMessage() : "예약 실행 중 오류가 발생했습니다: " + e.getMessage();
 		}
 		final ScheduledTask.Status status = finalStatus;
 		final String text = message;
 		tx.executeWithoutResult(s -> tasks.findById(taskId).ifPresent(t -> t.finish(status, text)));
+		if (status == ScheduledTask.Status.FAILED) {
+			log.warn("예약 실행 실패 taskId={} account={} kind={}: {}", taskId, task.getAccountId(), task.getKind(), text);
+			recorder.record("SCHEDULER", task.getAccountId(), "SCHEDULE_FAILED", text, null,
+				"taskId=" + taskId + " kind=" + task.getKind() + " title=" + task.getTitle());
+		} else {
+			log.info("예약 실행 완료 taskId={} account={} status={}: {}", taskId, task.getAccountId(), status, text);
+		}
 		postToConversation(task, status, text, outcomes);
 	}
 

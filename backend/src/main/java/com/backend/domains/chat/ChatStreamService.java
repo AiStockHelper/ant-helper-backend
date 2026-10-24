@@ -73,6 +73,7 @@ public class ChatStreamService {
 	private final AppProperties props;
 	private final Json json;
 	private final TransactionTemplate tx;
+	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
 	private final Set<Long> active = ConcurrentHashMap.newKeySet();
 	private ToolCallback[] toolCallbacks;
@@ -198,14 +199,27 @@ public class ChatStreamService {
 		Message userDto = mapper.message(user, List.of());
 		run.send("meta", Map.of("conversation", mapper.conversation(conv), "userMessage", userDto,
 			"assistantMessageId", assistant.getId()));
+		final String reqId = org.slf4j.MDC.get("reqId");
 		Thread.ofVirtual().name("chat-stream-" + assistant.getId()).start(() -> {
+			org.slf4j.MDC.put("memberId", String.valueOf(memberId));
+			if (reqId != null) {
+				org.slf4j.MDC.put("reqId", reqId);
+			}
+			long started = System.currentTimeMillis();
 			try {
+				log.info("채팅 응답 생성 시작 conversation={} assistantMessage={} chars={}", conv.getId(), assistant.getId(),
+					userText == null ? 0 : userText.length());
 				run.execute();
+				log.info("채팅 응답 생성 종료 conversation={} assistantMessage={} {}ms", conv.getId(), assistant.getId(),
+					System.currentTimeMillis() - started);
 			} catch (Throwable t) {
-				log.error("채팅 스트림 처리 중 예기치 않은 오류", t);
+				log.error("채팅 스트림 처리 중 예기치 않은 오류 conversation={}: {}", conv.getId(), t.toString(), t);
+				recorder.record("CHAT", null, "CHAT_STREAM_ERROR", t.getMessage(), t, "conversation=" + conv.getId());
 				run.fail("INTERNAL", "답변을 만드는 중 오류가 발생했습니다.");
 			} finally {
 				unlock(conv.getId());
+				org.slf4j.MDC.remove("memberId");
+				org.slf4j.MDC.remove("reqId");
 			}
 		});
 		return emitter;
@@ -258,6 +272,8 @@ public class ChatStreamService {
 		// Sink
 		@Override
 		public void tool(ToolCall call) {
+			log.info("AI 도구 호출 member={} conversation={} tool={} status={}", memberId, conversationId, call.name(),
+				call.status());
 			synchronized (toolCalls) {
 				toolCalls.put(call.id(), call);
 			}
@@ -356,6 +372,10 @@ public class ChatStreamService {
 				return;
 			}
 			if (used == null) {
+				log.error("AI 응답 실패(모든 공급자) member={} conversation={} produced={} lastError={}", memberId,
+					conversationId, produced, lastError == null ? "-" : lastError.toString());
+				recorder.record("CHAT", null, "LLM-001", "AI 응답을 가져오지 못했습니다", lastError,
+					"member=" + memberId + " conversation=" + conversationId);
 				persist(ChatMessage.Status.ERROR, null);
 				finished = true;
 				send("error", Map.of("code", "LLM-001", "message",

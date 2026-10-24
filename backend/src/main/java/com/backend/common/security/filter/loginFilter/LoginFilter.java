@@ -42,8 +42,6 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 	public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws
 		AuthenticationException {
 
-		log.info("LoginFilter");
-
 		String email = obtainEmail(request);
 		String password = obtainPw(request);
 
@@ -72,9 +70,8 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 		jwtTokenProvider.sendAccessAndRefreshToken(response, accessToken, refreshToken);
 		jwtTokenProvider.updateRefreshToken(memberId, refreshToken);
 
-		log.info("로그인 성공: {}", email);
-		log.info("accessToken={}", accessToken);
-		log.info("refreshToken={}", refreshToken);
+		org.slf4j.MDC.put("memberId", String.valueOf(memberId));
+		log.info("로그인 성공: memberId={} email={}", memberId, mask(email));
 	}
 
 	@Override
@@ -83,7 +80,7 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 		HttpServletResponse response,
 		AuthenticationException failed) {
 		String email = obtainEmail(request);
-		log.info("로그인 실패: {}", email);
+		log.warn("로그인 실패: email={} reason={}", mask(email), failed.getClass().getSimpleName());
 
 		ResponseWriter.writeResponse(response, DataResponse.ok(), HttpStatus.OK); // 보안을 위해 로그인 실패해도 200리턴
 	}
@@ -96,6 +93,18 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 	@Nullable
 	protected String obtainPw(HttpServletRequest request) {
 		return request.getParameter(PW_PARAMETER);
+	}
+
+	/** 로그에는 이메일 앞 2글자만 남긴다(예: ab***@example.com). */
+	static String mask(String email) {
+		if (email == null || email.isBlank()) {
+			return "-";
+		}
+		int at = email.indexOf('@');
+		if (at <= 0) {
+			return "***";
+		}
+		return email.substring(0, Math.min(2, at)) + "***" + email.substring(at);
 	}
 
 	private String extractEmail(Authentication authentication) {

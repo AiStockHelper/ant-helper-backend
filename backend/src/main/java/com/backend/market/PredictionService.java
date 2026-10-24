@@ -42,6 +42,7 @@ public class PredictionService {
 	private final AppProperties props;
 
 	public Prediction predict(MemberAccount account, Market market, String symbol) {
+		log.info("예측 요청 account={} market={} symbol={}", account.getId(), market, symbol);
 		List<Candle> candles = marketData.candles(account, market, symbol, Period.D, CANDLE_COUNT);
 		String name = marketData.nameOf(market, symbol);
 		PredictResult r = client.predict(new PredictRequest(symbol, name, market.currency().name(), toIn(candles)));
@@ -99,7 +100,9 @@ public class PredictionService {
 			Thread.currentThread().interrupt();
 			throw ApiException.from(ErrorCode.INTERNAL_SERVER_ERROR);
 		}
+		log.info("추천 후보 시세 수집 완료 group={} 요청={} 성공={}", group, picked.size(), items.size());
 		if (items.isEmpty()) {
+			log.error("추천 후보 시세를 하나도 가져오지 못했습니다 group={} account={}", group, account.getId());
 			throw ApiException.of(ErrorCode.NOT_ENOUGH_CANDLES, "추천 후보 종목의 시세를 가져오지 못했습니다.");
 		}
 

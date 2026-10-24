@@ -93,6 +93,7 @@ public class AccountService {
 	@Transactional
 	public Account create(Long memberId, CreateAccountRequest req) {
 		if (repository.existsByMemberIdAndAccountNumberAndAccountType(memberId, req.accountNumber(), req.accountType())) {
+			log.warn("계좌 등록 거절(중복) member={} type={}", memberId, req.accountType());
 			throw ApiException.from(ErrorCode.DUPLICATE_MEMBER_ACCOUNT);
 		}
 		validateWithKis(req);
@@ -112,7 +113,9 @@ public class AccountService {
 			.alias(req.alias() == null || req.alias().isBlank() ? null : req.alias().trim())
 			.isDefault(first)
 			.build();
-		return Account.from(repository.save(account));
+		MemberAccount saved = repository.save(account);
+		log.info("계좌 등록 member={} account={} type={} default={}", memberId, saved.getId(), req.accountType(), first);
+		return Account.from(saved);
 	}
 
 	@Transactional
@@ -133,6 +136,7 @@ public class AccountService {
 		MemberAccount a = requireOwned(memberId, accountId);
 		boolean wasDefault = a.isDefaultAccount();
 		repository.delete(a);
+		log.info("계좌 삭제 member={} account={} wasDefault={}", memberId, accountId, wasDefault);
 		kis.evict(accountId);
 		events.publishEvent(new AccountDeletedEvent(memberId, accountId));
 		if (wasDefault) {
@@ -166,7 +170,7 @@ public class AccountService {
 			}
 			kis.execute(client, api);
 		} catch (KisClientException e) {
-			log.info("계좌 검증 실패: {}", e.getMessage());
+			log.warn("계좌 검증 실패 type={}: {}", req.accountType(), e.getMessage());
 			throw ApiException.of(ErrorCode.KIS_ACCOUNT_NOT_FOUND,
 				"한국투자증권에서 계좌를 확인하지 못했습니다: " + e.getMessage()
 					+ " (모의/실전 구분과 앱키·시크릿·계좌번호를 확인해 주세요.)");

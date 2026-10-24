@@ -59,6 +59,7 @@ public class ActionService {
 	private final MarketDataService marketData;
 	private final ScheduleService scheduleService;
 	private final TransactionTemplate tx;
+	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
 	// ─────────────────────────── 생성 ───────────────────────────
 
@@ -118,6 +119,8 @@ public class ActionService {
 		LocalDateTime expires = LocalDateTime.now().plusMinutes(props.getTrading().getActionTtlMinutes());
 		ChatAction saved = tx.execute(s -> actions.save(new ChatAction(account.getMemberId(), conversationId, messageId,
 			account.getId(), kind, title, summary, json.write(details), json.write(payload), expires)));
+		log.info("확인 카드 생성 actionId={} member={} account={} kind={} title={}", saved.getId(), account.getMemberId(),
+			account.getId(), kind, title);
 		return mapper.action(saved, account);
 	}
 
@@ -133,6 +136,7 @@ public class ActionService {
 		if (a.getStatus() != ChatAction.Status.PENDING) {
 			throw ApiException.from(ErrorCode.ACTION_NOT_PENDING);
 		}
+		log.info("확인 카드 거절 actionId={} member={}", id, memberId);
 		return tx.execute(s -> {
 			ChatAction fresh = actions.findById(id).orElseThrow();
 			fresh.markStatus(ChatAction.Status.REJECTED, json.write(new ActionResult(false, "사용자가 거절했습니다.", null)));
@@ -152,6 +156,7 @@ public class ActionService {
 			throw ApiException.from(ErrorCode.ACTION_NOT_PENDING);
 		}
 
+		log.info("확인 카드 승인 처리 시작 actionId={} member={} account={} kind={}", id, memberId, a.getAccountId(), a.getKind());
 		ActionResult result;
 		boolean ok;
 		try {
@@ -163,15 +168,19 @@ public class ActionService {
 			};
 			ok = result.success();
 		} catch (ApiException e) {
+			log.warn("확인 카드 {} 실행 거절 [{}] {}", id, e.getErrorCode().getCode(), e.getMessage());
 			result = new ActionResult(false, e.getMessage(), null);
 			ok = false;
 		} catch (RuntimeException e) {
-			log.warn("확인 카드 {} 실행 중 오류", id, e);
+			log.error("확인 카드 {} 실행 중 오류: {}", id, e.toString(), e);
+			recorder.record("ACTION", a.getAccountId(), "ACTION_ERROR", e.getMessage(), e,
+				"actionId=" + id + " kind=" + a.getKind());
 			result = new ActionResult(false, "처리 중 오류가 발생했습니다: " + e.getMessage(), null);
 			ok = false;
 		}
 		final ActionResult finalResult = result;
 		final ChatAction.Status status = ok ? ChatAction.Status.EXECUTED : ChatAction.Status.FAILED;
+		log.info("확인 카드 처리 결과 actionId={} status={} message={}", id, status, finalResult.message());
 		return tx.execute(s -> {
 			ChatAction fresh = actions.findById(id).orElseThrow();
 			fresh.markStatus(status, json.write(finalResult));

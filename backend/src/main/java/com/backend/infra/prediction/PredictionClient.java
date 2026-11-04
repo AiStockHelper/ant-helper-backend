@@ -1,0 +1,159 @@
+package com.backend.infra.prediction;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClient;
+
+import com.backend.common.exception.ApiException;
+import com.backend.common.exception.ErrorCode;
+import com.backend.common.properties.AppProperties;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * 계산 전용 Python 예측 서버 호출. KIS 데이터는 Spring 이 가져와서 캔들로 넘겨준다.
+ */
+@Slf4j
+@Component
+public class PredictionClient {
+
+	private final RestClient rest;
+
+	public PredictionClient(AppProperties props) {
+		// uvicorn(h11)은 HTTP/2 업그레이드(h2c)를 지원하지 않으므로 HTTP/1.1 로 고정한다.
+		HttpClient http = HttpClient.newBuilder()
+			.version(HttpClient.Version.HTTP_1_1)
+			.connectTimeout(Duration.ofSeconds(3))
+			.build();
+		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
+		factory.setReadTimeout(Duration.ofSeconds(props.getPrediction().getTimeoutSeconds()));
+		this.rest = RestClient.builder()
+			.baseUrl(props.getPrediction().getBaseUrl())
+			.requestFactory(factory)
+			.build();
+	}
+
+	public record CandleIn(String date, double open, double high, double low, double close, long volume) {
+	}
+
+	public record PredictRequest(String symbol, String name, String currency, List<CandleIn> candles) {
+	}
+
+	public record ScreenItemIn(String symbol, String name, String currency, List<CandleIn> candles) {
+	}
+
+	public record ScreenRequest(List<ScreenItemIn> items, int topN, double minScore) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record SignalOut(String name, String value, String tone) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record PredictResult(
+		String symbol, String name, double currentPrice, double predictedPrice, double predictedChangeRate,
+		String direction, double confidence, String summary, List<SignalOut> signals, Map<String, Double> indicators
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record ScreenItemOut(
+		String symbol, String name, double currentPrice, double score, double predictedChangeRate,
+		String direction, double confidence, List<String> reasons
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record ScreenResult(List<ScreenItemOut> ranked) {
+	}
+
+	// ─────────────────────────── 야간 배치 ───────────────────────────
+
+	public record BatchSymbolIn(String symbol, String name, String market) {
+	}
+
+	public record BatchStartRequest(String market, List<BatchSymbolIn> symbols, int topLiquid) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchStatusOut(String jobId, String market, String status, String phase, int done, int total, int count,
+								 String tradeDate, String error) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchItemOut(
+		String symbol, String name, String market, String currency, String tradeDate, double currentPrice, double score,
+		double predictedChangeRate, String direction, double confidence, List<String> reasons, double avgTradeValue
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchResultOut(BatchStatusOut status, List<BatchItemOut> items) {
+	}
+
+	/** 일봉 수집+전 종목 스코어링 작업을 시작한다. 이미 같은 시장 작업이 돌고 있으면 409(IllegalStateException). */
+	public BatchStatusOut startBatch(BatchStartRequest request) {
+		try {
+			return rest.post().uri("/v1/batch/screen").contentType(MediaType.APPLICATION_JSON).body(request)
+				.retrieve().body(BatchStatusOut.class);
+		} catch (HttpClientErrorException.Conflict e) {
+			throw new IllegalStateException("이미 실행 중인 배치가 있습니다.", e);
+		} catch (RuntimeException e) {
+			throw new IllegalStateException("예측 서버에 배치를 시작하지 못했습니다: " + e.getMessage(), e);
+		}
+	}
+
+	public BatchStatusOut batchStatus(String jobId) {
+		return rest.get().uri("/v1/batch/{id}", jobId).retrieve().body(BatchStatusOut.class);
+	}
+
+	public BatchResultOut batchResult(String jobId) {
+		return rest.get().uri("/v1/batch/{id}/result", jobId).retrieve().body(BatchResultOut.class);
+	}
+
+	public PredictResult predict(PredictRequest request) {
+		return call(() -> rest.post().uri("/v1/predict").contentType(MediaType.APPLICATION_JSON).body(request)
+			.retrieve().body(PredictResult.class));
+	}
+
+	public ScreenResult screen(ScreenRequest request) {
+		return call(() -> rest.post().uri("/v1/screen").contentType(MediaType.APPLICATION_JSON).body(request)
+			.retrieve().body(ScreenResult.class));
+	}
+
+	public boolean isUp() {
+		try {
+			rest.get().uri("/health").retrieve().toBodilessEntity();
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	private <T> T call(java.util.function.Supplier<T> action) {
+		long start = System.currentTimeMillis();
+		try {
+			T result = action.get();
+			log.info("예측 서버 호출 성공 {}ms", System.currentTimeMillis() - start);
+			return result;
+		} catch (HttpClientErrorException.UnprocessableEntity e) {
+			log.warn("예측 서버 422(시세 데이터 부족): {}", e.getResponseBodyAsString());
+			throw ApiException.of(ErrorCode.NOT_ENOUGH_CANDLES, "예측에 필요한 시세 데이터가 부족합니다.");
+		} catch (ResourceAccessException e) {
+			log.error("예측 서버 연결 실패 {}ms: {}", System.currentTimeMillis() - start, e.getMessage());
+			throw ApiException.from(ErrorCode.PREDICTION_UNAVAILABLE);
+		} catch (RuntimeException e) {
+			log.error("예측 서버 호출 실패 {}ms: {}", System.currentTimeMillis() - start, e.toString(), e);
+			throw ApiException.from(ErrorCode.PREDICTION_UNAVAILABLE);
+		}
+	}
+}

@@ -3,9 +3,14 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
 
+    <!-- 로그 디렉터리. 운영에서는 -DLOG_DIR 또는 환경변수 LOG_DIR 로 바꾼다. -->
+    <property name="LOG_DIR" value="${LOG_DIR:-./log}"/>
+
+    <!-- reqId: 요청 단위 추적 ID, memberId: 인증된 회원 ID (없으면 '-') -->
     <property name="CONSOLE_LOG_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %clr(%5level) %cyan(%logger) - %msg%n"/>
-    <property name="FILE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %5level %logger - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %clr(%5level) [%X{reqId:--}|%X{memberId:--}] %cyan(%logger{40}) - %msg%n"/>
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %5level [%X{reqId:--}|%X{memberId:--}] %logger{40} - %msg%n"/>
 
     <!--local-->
     <springProfile name="local-env">
@@ -33,13 +38,19 @@
         </logger>
     </springProfile>
 
-    <!--prod-->
+    <!--prod: INFO 이상은 app-날짜.log, ERROR 만 따로 error-날짜.log. 파일명에 날짜가 들어가므로 날짜별 조회가 쉽다. -->
     <springProfile name="prod-env">
+        <include resource="file-app-appender.xml"/>
         <include resource="file-error-appender.xml"/>
 
-        <root level="ERROR">
+        <root level="INFO">
+            <appender-ref ref="FILE-APP"/>
             <appender-ref ref="FILE-ERROR"/>
         </root>
+
+        <logger level="WARN" name="org.hibernate"/>
+        <logger level="WARN" name="com.zaxxer.hikari"/>
+        <logger level="INFO" name="com.backend"/>
     </springProfile>
 
 </configuration>

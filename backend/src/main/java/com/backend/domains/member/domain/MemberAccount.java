@@ -3,6 +3,9 @@ package com.backend.domains.member.domain;
 import com.backend.common.util.encoder.EncryptUtil;
 import com.backend.order.kis.enums.AccountType;
 
+import java.time.LocalDateTime;
+
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -68,6 +71,17 @@ public class MemberAccount {
 	@Column(name = "account_product_code", nullable = false)
 	private String accountProductCode;
 
+	// 사용자가 붙인 계좌 별칭
+	@Column(name = "alias", length = 50)
+	private String alias;
+
+	// 채팅/조회에서 기본으로 사용할 계좌
+	@Column(name = "is_default")
+	private Boolean isDefault = false;
+
+	@Column(name = "created_at")
+	private LocalDateTime createdAt;
+
 	@Builder
 	private MemberAccount(
 		Long memberId,
@@ -77,7 +91,9 @@ public class MemberAccount {
 		String appKeySalt,
 		String secretKeySalt,
 		String accountNumber,
-		String accountProductCode
+		String accountProductCode,
+		String alias,
+		Boolean isDefault
 	) {
 		this.memberId = memberId;
 		this.accountType = accountType;
@@ -87,6 +103,48 @@ public class MemberAccount {
 		this.secretKeySalt = secretKeySalt;
 		this.accountNumber = accountNumber;
 		this.accountProductCode = accountProductCode;
+		this.alias = alias;
+		this.isDefault = isDefault != null && isDefault;
+	}
+
+	@PrePersist
+	void onCreate() {
+		if (createdAt == null) {
+			createdAt = LocalDateTime.now();
+		}
+		if (isDefault == null) {
+			isDefault = false;
+		}
+	}
+
+	public void rename(String alias) {
+		this.alias = alias == null || alias.isBlank() ? null : alias.trim();
+	}
+
+	public void markDefault(boolean value) {
+		this.isDefault = value;
+	}
+
+	public boolean isDefaultAccount() {
+		return Boolean.TRUE.equals(isDefault);
+	}
+
+	public boolean isPaper() {
+		return accountType == AccountType.PAPER_TRADE;
+	}
+
+	/** 사용자에게 보여줄 이름: 별칭이 없으면 유형 기반 이름 */
+	public String displayName() {
+		if (alias != null && !alias.isBlank()) {
+			return alias;
+		}
+		return isPaper() ? "모의 계좌" : "실전 계좌";
+	}
+
+	public String maskedAccountNumber() {
+		String n = accountNumber == null ? "" : accountNumber;
+		String masked = n.length() <= 4 ? n : n.substring(0, 2) + "****" + n.substring(n.length() - 2);
+		return masked + "-" + accountProductCode;
 	}
 
 	// approvalKey 업데이트 메서드

@@ -1,6 +1,5 @@
 package com.backend.domains.member.service;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -8,13 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.common.util.encoder.PasswordEncoderUtil;
-import com.backend.domains.email.service.EmailTokenService;
 import com.backend.domains.member.domain.LogoutToken;
-import com.backend.domains.member.domain.Member;
-import com.backend.domains.member.dto.request.CreateMemberRequest;
-import com.backend.domains.member.enums.AutoTradeState;
-import com.backend.domains.member.enums.MemberRole;
 import com.backend.domains.member.repository.LogoutRepository;
 import com.backend.domains.member.repository.MemberRepository;
 import com.backend.domains.member.repository.RefreshTokenRepository;
@@ -30,34 +23,10 @@ public class MemberService {
 
 	// 회원 관련
 	private final MemberRepository memberRepository;
-	private final MemberAccountService memberAccountService;
-
-	// 비밀번호 암호화 유틸
-	private final PasswordEncoderUtil passwordEncoderUtil;
 
 	// 회원 인증 관련
-	private final EmailTokenService emailTokenService;
 	private final RefreshTokenRepository refreshTokenRepository;
 	private final LogoutRepository logoutRepository;
-
-	// 회원가입하기
-	@Transactional(rollbackFor = ApiException.class)
-	public void createMember(CreateMemberRequest request) {
-		// 이메일 검증
-		validateDuplicatedEmail(request.getEmail());
-		emailTokenService.verifyEmailToken(request.getToken());
-
-		// 비밀번호 암호화
-		String encodedPassword = passwordEncoderUtil.encodePassword(request.getPw());
-
-		// 회원 저장
-		Member member = Member.builder()
-			.email(request.getEmail())
-			.pw(encodedPassword)
-			.memberRole(MemberRole.USER) // 기본 권한은 USER
-			.build();
-		memberRepository.save(member);
-	}
 
 	// 이메일 중복 조회
 	public void validateDuplicatedEmail(String email) {
@@ -65,12 +34,6 @@ public class MemberService {
 		if (isDuplicated) {
 			throw ApiException.from(ErrorCode.EMAIL_DUPLICATE);
 		}
-	}
-
-	// 회원 삭제하기
-	@Transactional
-	public void deleteMember(final Long memberId) {
-		memberRepository.deleteById(memberId);
 	}
 
 	//로그아웃

@@ -13,7 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.logout.LogoutFilter;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -21,7 +21,6 @@ import com.backend.common.properties.SecurityProperties;
 import com.backend.common.security.filter.exceptionHandlingFilter.ExceptionHandlingFilter;
 import com.backend.common.security.filter.jwtFilter.JwtAuthenticationFilter;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
-import com.backend.common.security.filter.loginFilter.LoginFilter;
 import com.backend.domains.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -58,13 +57,15 @@ public class SecurityConfig {
 		// url 관리
 		http
 			.authorizeHttpRequests((authorize) -> authorize
+				// SSE(SseEmitter) 완료 시 발생하는 ASYNC 디스패치는 이미 인증된 요청의 연속이므로 다시 막지 않는다.
+				.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC, jakarta.servlet.DispatcherType.ERROR)
+				.permitAll()
 				.requestMatchers(securityProperties.getPermitUrls()).permitAll() // PERMIT_URLS만 바로 접근 가능
 				.anyRequest().authenticated());
 
 		//필터 체인 추가
 		http
-			.addFilterAfter(loginFilter(), LogoutFilter.class)
-			.addFilterBefore(jwtAuthenticationFilter(), LoginFilter.class)
+			.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
 			.addFilterBefore(exceptionHandlingFilter(), JwtAuthenticationFilter.class);
 
 		return http.build();
@@ -78,15 +79,6 @@ public class SecurityConfig {
 		provider.setPasswordEncoder(passwordEncoder);
 
 		return new ProviderManager(provider);
-	}
-
-	@Bean
-	public LoginFilter loginFilter() {
-		LoginFilter loginFilter = new LoginFilter(jwtTokenProvider, memberRepository);
-
-		loginFilter.setAuthenticationManager(authenticationManager());
-
-		return loginFilter;
 	}
 
 	@Bean

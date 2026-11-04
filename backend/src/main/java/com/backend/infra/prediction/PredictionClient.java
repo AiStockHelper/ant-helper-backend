@@ -76,6 +76,50 @@ public class PredictionClient {
 	public record ScreenResult(List<ScreenItemOut> ranked) {
 	}
 
+	// ─────────────────────────── 야간 배치 ───────────────────────────
+
+	public record BatchSymbolIn(String symbol, String name, String market) {
+	}
+
+	public record BatchStartRequest(String market, List<BatchSymbolIn> symbols, int topLiquid) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchStatusOut(String jobId, String market, String status, String phase, int done, int total, int count,
+								 String tradeDate, String error) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchItemOut(
+		String symbol, String name, String market, String currency, String tradeDate, double currentPrice, double score,
+		double predictedChangeRate, String direction, double confidence, List<String> reasons, double avgTradeValue
+	) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public record BatchResultOut(BatchStatusOut status, List<BatchItemOut> items) {
+	}
+
+	/** 일봉 수집+전 종목 스코어링 작업을 시작한다. 이미 같은 시장 작업이 돌고 있으면 409(IllegalStateException). */
+	public BatchStatusOut startBatch(BatchStartRequest request) {
+		try {
+			return rest.post().uri("/v1/batch/screen").contentType(MediaType.APPLICATION_JSON).body(request)
+				.retrieve().body(BatchStatusOut.class);
+		} catch (HttpClientErrorException.Conflict e) {
+			throw new IllegalStateException("이미 실행 중인 배치가 있습니다.", e);
+		} catch (RuntimeException e) {
+			throw new IllegalStateException("예측 서버에 배치를 시작하지 못했습니다: " + e.getMessage(), e);
+		}
+	}
+
+	public BatchStatusOut batchStatus(String jobId) {
+		return rest.get().uri("/v1/batch/{id}", jobId).retrieve().body(BatchStatusOut.class);
+	}
+
+	public BatchResultOut batchResult(String jobId) {
+		return rest.get().uri("/v1/batch/{id}/result", jobId).retrieve().body(BatchResultOut.class);
+	}
+
 	public PredictResult predict(PredictRequest request) {
 		return call(() -> rest.post().uri("/v1/predict").contentType(MediaType.APPLICATION_JSON).body(request)
 			.retrieve().body(PredictResult.class));

@@ -16,15 +16,12 @@ import com.backend.domains.chat.dto.ChatDtos.Card;
 import com.backend.domains.chat.dto.ChatDtos.Conversation;
 import com.backend.domains.chat.dto.ChatDtos.Detail;
 import com.backend.domains.chat.dto.ChatDtos.Message;
-import com.backend.domains.chat.dto.ChatDtos.ScheduledTaskDto;
 import com.backend.domains.chat.dto.ChatDtos.ToolCall;
 import com.backend.domains.chat.entity.ChatAction;
 import com.backend.domains.chat.entity.ChatConversation;
 import com.backend.domains.chat.entity.ChatMessage;
 import com.backend.domains.member.domain.MemberAccount;
 import com.backend.domains.member.repository.MemberAccountRepository;
-import com.backend.domains.schedule.ScheduledTask;
-import com.backend.order.kis.enums.AccountType;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import lombok.RequiredArgsConstructor;
@@ -76,13 +73,5 @@ public class ChatMapper {
 			.filter(a -> a.getMessageId() != null && messageIds.contains(a.getMessageId()))
 			.collect(Collectors.groupingBy(ChatAction::getMessageId,
 				Collectors.mapping(a -> action(a, accounts.get(a.getAccountId())), Collectors.toList())));
-	}
-
-	public ScheduledTaskDto task(ScheduledTask t) {
-		AccountType type = accountRepository.findById(t.getAccountId()).map(MemberAccount::getAccountType).orElse(null);
-		Map<String, Object> params = json.read(t.getParamsJson(), new TypeReference<Map<String, Object>>() {}, Map.of());
-		return new ScheduledTaskDto(t.getId(), t.getAccountId(), type, t.getKind().name(), t.getTitle(),
-			TimeUtil.kst(t.getRunAt()), t.getStatus().name(), params, t.getResultMessage(),
-			TimeUtil.kst(t.getExecutedAt()), TimeUtil.kst(t.getCreatedAt()));
 	}
 }

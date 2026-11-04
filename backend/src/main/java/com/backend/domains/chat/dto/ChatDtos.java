@@ -67,11 +67,4 @@ public final class ChatDtos {
 		Long editMessageId
 	) {
 	}
-
-	public record ScheduledTaskDto(
-		Long id, Long accountId, AccountType accountType, String kind, String title, OffsetDateTime runAt,
-		String status, java.util.Map<String, Object> params, String resultMessage,
-		OffsetDateTime executedAt, OffsetDateTime createdAt
-	) {
-	}
 }

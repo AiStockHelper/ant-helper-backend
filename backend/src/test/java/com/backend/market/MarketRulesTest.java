@@ -4,15 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 import org.junit.jupiter.api.Test;
 
 import com.backend.common.exception.ApiException;
-import com.backend.domains.schedule.ScheduleService;
 import com.backend.domains.trade.TradePlanner;
 import com.backend.market.stock.StockMasterLoader;
 
@@ -66,24 +63,6 @@ class MarketRulesTest {
 	}
 
 	@Test
-	void scheduleRejectsPastWeekendAndMalformedTimes() {
-		ScheduleService s = new ScheduleService(null, null, null, null, null, null, null, null, null, null);
-		LocalDateTime nextWeekday = nextWeekdayAtNine();
-
-		Instant ok = s.parseRunAt(nextWeekday.toString(), Market.KRX);
-		assertThat(ok).isEqualTo(nextWeekday.atZone(SEOUL).toInstant());
-
-		assertThatThrownBy(() -> s.parseRunAt("2020-01-06T09:00", Market.KRX))
-			.isInstanceOf(ApiException.class).hasMessageContaining("뒤여야");
-		assertThatThrownBy(() -> s.parseRunAt("내일 아침", Market.KRX))
-			.isInstanceOf(ApiException.class).hasMessageContaining("형식");
-		assertThatThrownBy(() -> s.parseRunAt(nextSaturdayAtNine().toString(), Market.KRX))
-			.isInstanceOf(ApiException.class).hasMessageContaining("토요일");
-		assertThatThrownBy(() -> s.parseRunAt(LocalDateTime.now(SEOUL).plusDays(90).toString(), Market.KRX))
-			.isInstanceOf(ApiException.class);
-	}
-
-	@Test
 	void masterFileTailLengthIsDetectedEvenWhenFormatShifts() {
 		String[] rows = new String[50];
 		for (int i = 0; i < rows.length; i++) {
@@ -94,21 +73,5 @@ class MarketRulesTest {
 		// 기대값을 일부러 1 틀리게 줘도 데이터에서 실제 길이를 찾아야 한다.
 		assertThat(StockMasterLoader.detectTailLength(rows, 223)).isEqualTo(222);
 		assertThat(StockMasterLoader.detectTailLength(rows, 222)).isEqualTo(222);
-	}
-
-	private static LocalDateTime nextWeekdayAtNine() {
-		LocalDateTime t = LocalDateTime.now(SEOUL).plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
-		while (t.getDayOfWeek().getValue() >= 6) {
-			t = t.plusDays(1);
-		}
-		return t;
-	}
-
-	private static LocalDateTime nextSaturdayAtNine() {
-		LocalDateTime t = LocalDateTime.now(SEOUL).plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
-		while (t.getDayOfWeek().getValue() != 6) {
-			t = t.plusDays(1);
-		}
-		return t;
 	}
 }

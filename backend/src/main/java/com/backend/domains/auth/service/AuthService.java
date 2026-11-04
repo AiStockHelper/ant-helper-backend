@@ -39,14 +39,16 @@ public class AuthService {
 	private final EmailTokenService emailTokenService;
 	private final MemberService memberService;
 	private final AppProperties appProperties;
+	private final SignupPolicy signupPolicy;
 	private final com.backend.domains.chat.ChatService chatService;
-	private final com.backend.domains.schedule.ScheduledTaskRepository scheduledTasks;
+	private final com.backend.domains.agent.AgentTaskService agentTasks;
 	private final com.backend.domains.member.repository.MemberAccountRepository accountRepository;
 	private final com.backend.market.KisGateway kisGateway;
 
 	@Transactional
 	public Me signup(SignupRequest request) {
 		final String email = request.email().trim().toLowerCase();
+		signupPolicy.requireAllowed(email);
 		if (memberRepository.existsByEmail(email)) {
 			throw ApiException.from(ErrorCode.EMAIL_DUPLICATE);
 		}
@@ -98,7 +100,7 @@ public class AuthService {
 	@Transactional
 	public void deleteMember(Long memberId) {
 		chatService.deleteAll(memberId);
-		scheduledTasks.deleteAllByMemberId(memberId);
+		agentTasks.deleteAllForMember(memberId);
 		accountRepository.findAllByMemberId(memberId).forEach(a -> kisGateway.evict(a.getId()));
 		accountRepository.deleteAllByMemberId(memberId);
 		refreshTokenRepository.deleteByMemberId(memberId);

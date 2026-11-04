@@ -54,6 +54,7 @@ public class TradePlanner {
 	private final MarketDataService marketData;
 	private final TradingService tradingService;
 	private final AppProperties props;
+	private final com.backend.market.TradingCalendar calendar;
 
 	public static String normalizeSide(String side) {
 		if (side == null) {
@@ -131,11 +132,12 @@ public class TradePlanner {
 		if (props.getTrading().isSkipMarketHoursCheck()) {
 			return;
 		}
-		if (!market.isOpenAt(ZonedDateTime.now())) {
-			String hours = market == Market.KRX ? "한국 정규장(평일 09:00~15:30 KST)"
-				: "미국 정규장(평일 09:30~16:00 뉴욕 현지 시간)";
+		ZonedDateTime now = ZonedDateTime.now();
+		if (!market.isOpenAt(now) || !calendar.isTradingDay(market, now.withZoneSameInstant(market.zone()).toLocalDate())) {
+			String hours = market == Market.KRX ? "한국 정규장(휴장일 제외 평일 09:00~15:30 KST)"
+				: "미국 정규장(휴장일 제외 평일 09:30~16:00 뉴욕 현지 시간)";
 			throw ApiException.of(ErrorCode.ORDER_INVALID,
-				"지금은 " + hours + " 운영 시간이 아닙니다. 장이 열리는 시각으로 예약 주문을 걸 수 있습니다.");
+				"지금은 " + hours + " 운영 시간이 아닙니다. 장이 열리는 시각에 맞춰 자동 실행을 예약할 수 있습니다.");
 		}
 	}
 

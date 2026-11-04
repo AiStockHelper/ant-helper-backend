@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.util.encoder.PasswordEncoderUtil;
+import com.backend.domains.auth.service.SignupPolicy;
 import com.backend.domains.email.service.EmailTokenService;
 import com.backend.domains.member.domain.LogoutToken;
 import com.backend.domains.member.domain.Member;
@@ -33,6 +34,7 @@ public class MemberService {
 
 	// 비밀번호 암호화 유틸
 	private final PasswordEncoderUtil passwordEncoderUtil;
+	private final SignupPolicy signupPolicy;
 
 	// 회원 인증 관련
 	private final EmailTokenService emailTokenService;
@@ -42,6 +44,7 @@ public class MemberService {
 	// 회원가입하기
 	@Transactional(rollbackFor = ApiException.class)
 	public void createMember(CreateMemberRequest request) {
+		signupPolicy.requireAllowed(request.getEmail());
 		// 이메일 검증
 		validateDuplicatedEmail(request.getEmail());
 		emailTokenService.verifyEmailToken(request.getToken());

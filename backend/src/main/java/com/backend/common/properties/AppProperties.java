@@ -20,6 +20,57 @@ public class AppProperties {
 	private Llm llm = new Llm();
 	private Recommendation recommendation = new Recommendation();
 	private Mcp mcp = new Mcp();
+	private Agent agent = new Agent();
+	private Calendar calendar = new Calendar();
+	private Screening screening = new Screening();
+
+	@Getter
+	@Setter
+	public static class Agent {
+		/** false 이면 예약/자동 실행이 모두 멈춘다(운영 비상 스위치). */
+		private boolean enabled = true;
+		private int maxActiveTasksPerMember = 20;
+		/** AI 가 한 번 실행되는 동안 부를 수 있는 도구 호출 수 상한 */
+		private int maxToolCalls = 40;
+		private int llmTimeoutSeconds = 300;
+		/** 연속 실패가 이 횟수에 도달하면 작업을 일시정지한다. */
+		private int maxConsecutiveFailures = 5;
+		/** 실전 계좌 주문 실행, 일시정지 같은 중요한 일이 생기면 이메일로 알린다. */
+		private boolean notifyEmail = true;
+		/** 예약 시각을 이 시간 넘겨서 서버가 일어났다면 낡은 지시로 보고 실행하지 않는다. */
+		private int maxLatenessMinutes = 30;
+	}
+
+	@Getter
+	@Setter
+	public static class Screening {
+		/** false 이면 야간 스크리닝 배치를 돌리지 않고, 추천은 예전처럼 요청 때마다 후보를 실시간 분석한다. */
+		private boolean enabled = true;
+		/** 한국 유동성 상위 몇 종목까지 분석할지(20일 평균 거래대금 기준) */
+		private int topLiquidKrx = 1000;
+		private int topLiquidUs = 1000;
+		/** 서버가 켜질 때 저장된 결과가 없으면 곧바로 한 번 돌린다(개발 환경에서는 끄는 것을 권장). */
+		private boolean runOnStartupIfEmpty = false;
+		/** 결과가 이 일수보다 오래되면 낡았다고 보고 실시간 분석으로 대신한다. */
+		private int maxAgeDays = 6;
+		private int keepDays = 400;
+		/** 배치 한 번을 기다릴 최대 시간(분) */
+		private int timeoutMinutes = 120;
+	}
+
+	@Getter
+	@Setter
+	public static class Calendar {
+		/**
+		 * 한국거래소 휴장일(yyyy-MM-dd). 주말과 고정 공휴일(신정, 삼일절, 근로자의 날, 어린이날, 현충일, 광복절,
+		 * 개천절, 한글날, 성탄절, 연말)은 코드에 내장되어 있고, 여기에는 음력 명절·선거일·임시공휴일과
+		 * 대체공휴일처럼 해마다 달라지는 날을 적는다. 매년 갱신 필요.
+		 */
+		private List<String> krxHolidays = List.of(
+			"2026-02-16", "2026-02-17", "2026-02-18", "2026-05-25", "2026-06-03",
+			"2026-08-17", "2026-09-24", "2026-09-25", "2026-10-05",
+			"2027-02-08", "2027-02-09", "2027-05-13", "2027-09-14", "2027-09-15", "2027-09-16");
+	}
 
 	@Getter
 	@Setter
@@ -35,6 +86,8 @@ public class AppProperties {
 	@Setter
 	public static class Auth {
 		private boolean requireEmailVerification = false;
+		/** 회원가입을 허용할 이메일 목록. 여기에 없는 이메일은 가입이 거절된다. 비어 있으면 아무도 가입할 수 없다. */
+		private List<String> allowedSignupEmails = List.of("waldenho0313@gmail.com");
 	}
 
 	@Getter

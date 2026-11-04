@@ -19,6 +19,8 @@ public interface StockMasterRepository extends JpaRepository<StockMaster, Long> 
 
 	long countByMarket(Market market);
 
+	List<StockMaster> findByMarketInAndSecurityType(Collection<Market> markets, String securityType);
+
 	List<StockMaster> findByMarketAndSymbolIn(Market market, Collection<String> symbols);
 
 	@Query("""

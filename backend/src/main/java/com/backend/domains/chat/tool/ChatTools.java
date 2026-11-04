@@ -18,14 +18,21 @@ import com.backend.common.dto.PageResponse;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.util.TimeUtil;
+import com.backend.domains.agent.AgentDtos.AgentTaskDto;
+import com.backend.domains.agent.AgentTask;
+import com.backend.domains.agent.AgentTaskService;
+import com.backend.domains.agent.AgentTradingService;
+import com.backend.domains.agent.Limits;
+import com.backend.domains.agent.OrderCards;
+import com.backend.domains.agent.Schedule;
+import com.backend.domains.agent.skill.SkillRegistry;
 import com.backend.domains.chat.ActionService;
 import com.backend.domains.chat.dto.ChatDtos.Action;
-import com.backend.domains.chat.dto.ChatDtos.ScheduledTaskDto;
 import com.backend.domains.member.domain.MemberAccount;
-import com.backend.domains.schedule.ScheduleService;
-import com.backend.domains.schedule.ScheduledTask;
 import com.backend.domains.trade.TradePlanner;
 import com.backend.domains.trade.TradePlanner.Plan;
+import com.backend.domains.screening.ScreeningService;
+import com.backend.market.Currency;
 import com.backend.market.Market;
 import com.backend.market.MarketDataService;
 import com.backend.market.MarketDataService.Period;
@@ -39,6 +46,7 @@ import com.backend.market.dto.MarketDtos.Prediction;
 import com.backend.market.dto.MarketDtos.Quote;
 import com.backend.market.dto.MarketDtos.Recommendation;
 import com.backend.market.dto.MarketDtos.StockSummary;
+import com.backend.order.kis.kis_client.exception.KisClientException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -57,7 +65,10 @@ public class ChatTools {
 	private final TradingService tradingService;
 	private final TradePlanner planner;
 	private final ActionService actionService;
-	private final ScheduleService scheduleService;
+	private final AgentTaskService agentTasks;
+	private final AgentTradingService agentTrading;
+	private final SkillRegistry skills;
+	private final ScreeningService screening;
 	private final com.backend.domains.chat.memory.ChatHistorySearchService historySearch;
 
 	// ─────────────────────────── 시세 ───────────────────────────
@@ -142,25 +153,136 @@ public class ChatTools {
 			"horizon", "다음 거래일", "disclaimer", "통계 모델의 참고 지표이며 수익을 보장하지 않습니다.");
 	}
 
-	@Tool(name = "recommend_stocks", description = "대표 종목 후보군을 AI 모델로 분석해 내일 상승 가능성이 높은 추천 종목을 순위로 보여줍니다.")
+	@Tool(name = "recommend_stocks", description = "AI 예측 모델로 내일 상승이 예상되는 종목을 순위로 보여줍니다(모델 추천). 야간 배치로 분석해 둔 한국·미국 유동성 상위 종목 전체(수백~천 개)가 대상이라 즉시 응답합니다. "
+		+ "결과에는 모델이 고른 종목(modelPicks)과 점수가 높은 다른 후보(otherCandidates)의 지표가 함께 들어 있습니다. "
+		+ "사용자가 종목 추천을 요청하면 이 도구를 먼저 부르고, 이어서 당신(AI)의 의견을 show_llm_picks 로 제출하세요.")
 	public Object recommendStocks(
 		@ToolParam(description = "KRX(한국, 기본) 또는 US(미국)", required = false) String market,
 		@ToolParam(description = "추천 개수(1~10). 기본 5", required = false) Integer count,
 		ToolContext ctx
 	) {
 		ChatSession s = session(ctx);
-		String group = market != null && (market.equalsIgnoreCase("US") || market.equalsIgnoreCase("NASDAQ")
-			|| market.equalsIgnoreCase("NYSE") || market.equalsIgnoreCase("AMEX")) ? "US" : "KRX";
+		String group = ScreeningService.normalizeGroup(market);
 		int n = count == null ? 5 : Math.max(1, Math.min(count, 10));
-		List<Recommendation> recs = predictionService.recommend(s.account(), group, n);
-		s.card("recommendations", recs);
-		s.summary(recs.size() + "개 종목");
-		return recs.stream().map(r -> map("symbol", r.productNumber(), "name", r.name(), "market", r.market(),
-			"currency", r.currency(), "currentPrice", r.currentPrice(), "score", r.score(),
-			"predictedChangeRatePercent", r.predictedChangeRate(), "direction", r.direction(),
-			"confidence", r.confidence(), "reasons", r.reasons())).toList();
+		MemberAccount account = s.account();
+		List<Recommendation> picks = predictionService.withLivePrices(account, predictionService.recommend(account, group, n));
+		List<Recommendation> pool = predictionService.analysisPool(account, group, Math.min(20, Math.max(10, n * 2)));
+		s.rememberCandidates(pool, picks);
+		String basis = !picks.isEmpty() && picks.get(0).asOf() != null ? picks.get(0).asOf() + " 장마감 기준 야간 분석"
+			: !pool.isEmpty() && pool.get(0).asOf() != null ? pool.get(0).asOf() + " 장마감 기준 야간 분석" : "실시간 분석(대표 종목 후보군)";
+		if (!picks.isEmpty()) {
+			s.card("recommendations", picks);
+		}
+		s.summary(picks.size() + "개 종목");
+		List<Object> pickMaps = new ArrayList<>();
+		for (int i = 0; i < picks.size(); i++) {
+			pickMaps.add(recMap(picks.get(i), i + 1));
+		}
+		List<Object> others = new ArrayList<>();
+		for (Recommendation r : pool) {
+			if (!s.isModelPick(r.productNumber())) {
+				others.add(recMap(r, 0));
+			}
+		}
+		return map("basis", basis, "modelPicks", pickMaps, "otherCandidates", others,
+			"note", picks.isEmpty() ? "모델 기준(상승 예상 + 점수 양수)을 만족하는 종목이 없습니다. 억지로 추천하지 말고 그대로 알리세요." : null,
+			"next", "이제 이 지표들을 보고 당신(AI)의 의견으로 최대 " + n + "종목을 골라 show_llm_picks 로 제출하세요. 후보 밖 종목도 고를 수 있습니다.");
 	}
 
+	private static Map<String, Object> recMap(Recommendation r, int rank) {
+		return map("modelRank", rank == 0 ? null : rank, "symbol", r.productNumber(), "name", r.name(), "market", r.market(),
+			"currency", r.currency(), "currentPrice", r.currentPrice(), "score", r.score(),
+			"predictedChangeRatePercent", r.predictedChangeRate(), "direction", r.direction(),
+			"confidence", r.confidence(), "reasons", r.reasons().stream().limit(5).toList());
+	}
+
+	public record LlmPick(String symbol, String market, String reason, String outlook) {
+	}
+
+	@Tool(name = "show_llm_picks", description = "당신(AI)이 직접 판단해 고른 종목과 이유를 '모델 추천'과 나란히 보여주는 카드를 만듭니다. "
+		+ "recommend_stocks 후보 안에서 고르는 것이 좋지만, 후보 밖 종목도 고를 수 있습니다. 후보 밖이면 symbol 은 실제 종목 코드/티커여야 하며(모르면 search_stock 으로 먼저 확인), "
+		+ "서버가 실제 시세와 모델 분석 여부를 조회해 카드에 표시합니다(존재하지 않는 종목은 거절됩니다). "
+		+ "이유(reason)는 도구가 준 지표나 조회한 값에 근거해 한두 문장으로 쓰고, 실시간 뉴스·공시는 확인하지 못했으므로 지어내지 마세요. 모델 추천과 의견이 갈리면 그대로 고르세요.")
+	public Object showLlmPicks(
+		@ToolParam(description = "당신이 고른 종목 목록(최대 10개). symbol=종목 코드/티커, market=KRX/NASDAQ/NYSE/AMEX(모르면 생략), reason=근거, outlook='단기 상승 기대', '관망', '변동성 주의' 같은 한 줄 전망") List<LlmPick> picks,
+		ToolContext ctx
+	) {
+		ChatSession s = session(ctx);
+		MemberAccount account = s.account();
+		if (picks == null || picks.isEmpty()) {
+			throw ApiException.of(ErrorCode.INVALID_PARAMETER, "고른 종목이 없습니다.");
+		}
+		List<Map<String, Object>> shown = new ArrayList<>();
+		List<String> rejected = new ArrayList<>();
+		for (LlmPick p : picks.stream().limit(10).toList()) {
+			String sym = p.symbol() == null ? "" : p.symbol().trim();
+			try {
+				shown.add(describePick(s, account, sym, p));
+			} catch (RuntimeException e) {
+				rejected.add(sym + " (" + (e instanceof ApiException || e instanceof KisClientException ? e.getMessage() : "조회 실패") + ")");
+			}
+		}
+		if (shown.isEmpty()) {
+			throw ApiException.of(ErrorCode.INVALID_PARAMETER, "고른 종목을 확인하지 못했습니다: " + String.join(", ", rejected));
+		}
+		s.card("llm_recommendations", map("picks", shown));
+		s.summary("AI 의견 " + shown.size() + "종목");
+		List<Object> overlap = shown.stream().filter(m -> Boolean.TRUE.equals(m.get("inModelTop"))).map(m -> m.get("productNumber")).toList();
+		List<Object> noModel = shown.stream().filter(m -> !Boolean.TRUE.equals(m.get("modelAnalyzed"))).map(m -> m.get("productNumber")).toList();
+		return map("status", "SHOWN", "shown", shown.size(), "overlapWithModelTop", overlap, "withoutModelAnalysis", noModel,
+			"rejected", rejected,
+			"note", "카드가 표시되었습니다. 답변은 '모델 추천'과 'AI 의견' 두 부분으로 짧게 정리하고, 겹치는 종목·서로 다른 종목·모델 분석이 없는 종목을 구분해 알려 주세요.");
+	}
+
+	/** AI 가 고른 종목 하나를 실제 데이터로 검증하고 카드 항목으로 만든다. 존재하지 않으면 예외. */
+	private Map<String, Object> describePick(ChatSession s, MemberAccount account, String sym, LlmPick p) {
+		Recommendation pooled = s.candidates().stream()
+			.filter(r -> r.productNumber().equalsIgnoreCase(sym)).findFirst().orElse(null);
+		StockSummary stock = pooled != null
+			? new StockSummary(pooled.productNumber(), pooled.name(), null, pooled.market(), pooled.currency())
+			: marketData.resolve(sym, parseMarket(p.market()));
+		String group = ScreeningService.normalizeGroup(stock.market().name());
+		BigDecimal price;
+		try {
+			price = marketData.quote(account, stock.market(), stock.productNumber()).price();
+		} catch (RuntimeException e) {
+			if (pooled == null) {
+				throw e;
+			}
+			price = pooled.currentPrice();
+		}
+		Double score = null;
+		String direction = null;
+		Double change = null;
+		Long rank = null;
+		Long total = null;
+		var ranked = screening.lookup(group, stock.productNumber());
+		if (ranked.isPresent()) {
+			var row = ranked.get().row();
+			score = row.getScore();
+			direction = row.getDirection();
+			change = row.getPredictedChangeRate();
+			rank = ranked.get().rank();
+			total = ranked.get().total();
+		} else if (pooled != null) {
+			score = pooled.score();
+			direction = pooled.direction();
+			change = pooled.predictedChangeRate();
+		} else {
+			try {
+				Prediction pr = predictionService.predict(account, stock.market(), stock.productNumber());
+				direction = pr.direction();
+				change = pr.predictedChangeRate();
+			} catch (RuntimeException ignored) {
+				// 모델 분석을 못 하면 '모델 분석 없음'으로 표시한다.
+			}
+		}
+		return map("productNumber", stock.productNumber(), "name", stock.name(), "market", stock.market(),
+			"currency", stock.currency(), "currentPrice", price, "modelRank", rank, "modelTotal", total,
+			"inModelTop", s.isModelPick(stock.productNumber()), "modelAnalyzed", direction != null,
+			"modelScore", score, "modelDirection", direction, "modelPredictedChangeRate", change,
+			"reason", p.reason() == null ? "" : p.reason().trim(), "outlook", p.outlook() == null ? "" : p.outlook().trim());
+	}
 	// ─────────────────────────── 계좌 ───────────────────────────
 
 	@Tool(name = "get_account_summary", description = "현재 선택된 계좌의 예수금(현금), 총 평가금액, 평가손익, 보유 종목(국내+미국)을 조회합니다.")
@@ -232,9 +354,12 @@ public class ChatTools {
 		planner.enforceLimits(account, plan);
 		planner.requireMarketOpen(plan.market());
 
+		if (s.agentTaskId() != null) {
+			return placeAgentOrder(s, account, plan);
+		}
 		if (account.isPaper()) {
 			OrderOutcome out = planner.execute(account, plan);
-			s.card("order_result", ScheduleService.orderResultCard(out));
+			s.card("order_result", OrderCards.orderResult(out));
 			s.summary(out.success() ? plan.name() + " " + plan.quantity() + "주 " + plan.sideLabel() + " 접수" : "주문 실패");
 			return map("status", out.success() ? "SUBMITTED" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
 				"name", plan.name(), "side", plan.side(), "quantity", plan.quantity(), "currency", plan.currency(),
@@ -251,6 +376,26 @@ public class ChatTools {
 			"orderType", plan.orderTypeLabel(), "estimatedAmount", plan.estimatedAmount(), "account", "실전 계좌");
 	}
 
+	/** 사람이 없는 자동 실행의 주문: 한도를 코드로 검사하고 장부에 기록하는 AgentTradingService 를 거친다. */
+	private Object placeAgentOrder(ChatSession s, MemberAccount account, Plan plan) {
+		if (!s.autonomous()) {
+			throw ApiException.of(ErrorCode.ORDER_INVALID,
+				"이 자동 실행은 실전 계좌에서 사용자 확인 없이 주문할 수 없습니다. 주문 대신 결과 요약에 제안으로 적어 주세요.");
+		}
+		AgentTask task = agentTasks.requireById(s.agentTaskId());
+		OrderOutcome out = "BUY".equals(plan.side())
+			? agentTrading.buy(task, account, plan, "AI 판단")
+			: agentTrading.sell(task, account, plan, "AI 판단");
+		if (out.success()) {
+			s.orderAccepted();
+		}
+		s.card("order_result", OrderCards.orderResult(out));
+		s.summary(out.success() ? plan.name() + " " + plan.quantity() + "주 " + plan.sideLabel() + " 접수" : "주문 실패");
+		return map("status", out.success() ? "SUBMITTED" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
+			"name", plan.name(), "side", plan.side(), "quantity", plan.quantity(), "currency", plan.currency(),
+			"orderType", plan.orderTypeLabel(), "price", plan.limitPrice() != null ? plan.limitPrice() : plan.refPrice());
+	}
+
 	@Tool(name = "cancel_order", description = "접수된 미체결 주문을 취소합니다. 주문번호는 get_order_history 로 확인할 수 있습니다.")
 	public Object cancelOrder(
 		@ToolParam(description = "취소할 주문번호") String orderNo,
@@ -264,134 +409,140 @@ public class ChatTools {
 		}
 		StockSummary stock = marketData.resolve(symbol, parseMarket(market));
 		OrderOutcome out = tradingService.cancelOrder(s.account(), stock.market(), stock.productNumber(), orderNo);
-		s.card("order_result", ScheduleService.orderResultCard(out));
+		s.card("order_result", OrderCards.orderResult(out));
 		s.summary(out.success() ? "취소 접수" : "취소 실패");
 		return map("status", out.success() ? "CANCEL_SUBMITTED" : "FAILED", "message", out.message());
 	}
 
-	// ─────────────────────────── 예약 ───────────────────────────
+	// ─────────────────────────── 자동 실행(예약·반복) ───────────────────────────
 
-	@Tool(name = "schedule_order", description = "지정한 시각에 특정 종목을 자동으로 매수/매도하도록 예약합니다. "
-		+ "시각은 반드시 현재 시각을 기준으로 계산한 절대 시각(ISO 8601, 예 2026-10-25T09:00)으로 전달하세요. "
-		+ "오프셋이 없으면 해당 시장의 현지 시간(한국=KST, 미국=뉴욕)으로 해석됩니다. 실전 계좌는 확인 카드 승인 후 등록됩니다.")
-	public Object scheduleOrder(
-		@ToolParam(description = "종목 코드/티커 또는 이름") String symbol,
-		@ToolParam(description = "BUY(매수) 또는 SELL(매도)") String side,
-		@ToolParam(description = "실행 시각. 예: 2026-10-25T09:00") String runAt,
-		@ToolParam(description = "수량(주). 금액(amount)을 쓰면 생략", required = false) Long quantity,
-		@ToolParam(description = "주문 금액(해당 종목 통화 기준). 실행 시점의 시세로 수량이 계산됨", required = false) Double amount,
-		@ToolParam(description = "지정가. 생략하면 국내 시장가/미국 현재가 기준 지정가", required = false) Double price,
-		@ToolParam(description = "시장(KRX, NASDAQ, NYSE, AMEX). 모르면 생략", required = false) String market,
+	@Tool(name = "schedule_task", description = "나중에 또는 반복해서 AI가 스스로 수행할 작업을 예약합니다. 1회 예약, 매일/요일 반복, 장 시작·마감 기준, 장중 반복을 모두 지원합니다. "
+		+ "예약된 시각이 되면 서버가 AI(당신)를 깨워 instruction 을 읽고 도구로 수행하게 합니다. "
+		+ "scheduleType: ONCE(runAt 필요, 예 2026-11-05T09:00) | DAILY(time=HH:mm, days=WEEKDAYS/EVERYDAY/MON,WED 등, market 을 주면 휴장일 제외) | "
+		+ "MARKET_EVENT(market=KRX 또는 US, event=OPEN 또는 CLOSE, offsetMinutes=개장/마감 기준 분 단위 오프셋) | "
+		+ "MARKET_INTERVAL(market, intervalMinutes>=5, 장중 반복). 시각은 한국 시간(KST) 기준이며 미국장은 market=US 로 주면 서머타임이 자동 반영됩니다. "
+		+ "instruction 에는 사용자가 원하는 목표·조건·종목 수·금액·매도 기준을 빠짐없이 구체적으로 적으세요(실행할 때 이 글만 보고 일하기 때문입니다). "
+		+ "주문이 포함된 작업이면 autonomous=true 와 budget(총 예산 시드)을 지정해야 하며, 실전 계좌는 사용자가 확인 카드에서 승인해야 시작됩니다.")
+	public Object scheduleTask(
+		@ToolParam(description = "작업 제목(짧게)") String title,
+		@ToolParam(description = "실행할 때 AI가 읽고 수행할 구체적인 지시문") String instruction,
+		@ToolParam(description = "ONCE, DAILY, MARKET_EVENT, MARKET_INTERVAL 중 하나") String scheduleType,
+		@ToolParam(description = "ONCE 전용. 실행 시각 ISO 8601 (예: 2026-11-05T09:00)", required = false) String runAt,
+		@ToolParam(description = "DAILY 전용. 실행 시각 HH:mm (24시간)", required = false) String time,
+		@ToolParam(description = "반복 요일: WEEKDAYS, EVERYDAY, 또는 MON,WED,FRI 처럼. 생략하면 매일", required = false) String days,
+		@ToolParam(description = "시장: KRX(한국) 또는 US(미국). 장 기준 일정이거나 휴장일을 건너뛰려면 지정", required = false) String market,
+		@ToolParam(description = "MARKET_EVENT 전용. OPEN(개장) 또는 CLOSE(마감)", required = false) String event,
+		@ToolParam(description = "MARKET_EVENT 전용. 기준 시각에서의 분 오프셋(음수=이전, 양수=이후). 예: 개장 10분 후는 10", required = false) Integer offsetMinutes,
+		@ToolParam(description = "MARKET_INTERVAL 전용. 반복 간격(분, 5 이상)", required = false) Integer intervalMinutes,
+		@ToolParam(description = "true 이면 이 작업이 사람 확인 없이 직접 주문할 수 있음. 주문하는 작업이면 반드시 true", required = false) Boolean autonomous,
+		@ToolParam(description = "자율 주문의 총 예산(시드). 국내 종목은 원, 미국 종목은 달러. autonomous=true 이면 필수", required = false) Double budget,
+		@ToolParam(description = "한 종목에 넣을 최대 비중(시드 대비 %). 기본 30", required = false) Double maxPositionPct,
+		@ToolParam(description = "누적 손실이 시드의 이 %에 닿으면 신규 매수를 막음. 기본 15", required = false) Double maxLossPct,
 		ToolContext ctx
 	) {
 		ChatSession s = session(ctx);
-		if (!s.allowOrderCall()) {
-			throw ApiException.of(ErrorCode.ORDER_INVALID, "한 번의 답변에서 만들 수 있는 예약 수를 초과했습니다.");
-		}
 		MemberAccount account = s.account();
-		Plan plan = planner.plan(account, symbol, market, side, quantity, bd(amount), bd(price));
-		planner.enforceLimits(account, plan);
-		java.time.Instant at = scheduleService.parseRunAt(runAt, plan.market());
-		String when = scheduleService.humanTime(at, plan.market());
+		Schedule.Type type;
+		try {
+			type = Schedule.Type.valueOf(scheduleType == null ? "" : scheduleType.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "scheduleType 은 ONCE, DAILY, MARKET_EVENT, MARKET_INTERVAL 중 하나여야 합니다.");
+		}
+		Schedule schedule = new Schedule(type, runAt, time, Schedule.parseDays(days), null, market, event, offsetMinutes,
+			intervalMinutes, null, null);
+		schedule.validate();
 
-		Map<String, Object> params = new LinkedHashMap<>();
-		params.put("market", plan.market().name());
-		params.put("productNumber", plan.symbol());
-		params.put("name", plan.name());
-		params.put("side", plan.side());
-		if (quantity != null && quantity > 0) {
-			params.put("quantity", quantity);
+		// 자동 실행 중인 AI 가 만드는 후속 작업: 한도와 장부는 부모를 그대로 따른다.
+		if (s.agentTaskId() != null) {
+			AgentTask parent = agentTasks.requireById(s.agentTaskId());
+			AgentTask child = agentTasks.createChild(parent, account, title, instruction, schedule);
+			s.card("agent_tasks", List.of(agentTasks.toDto(child)));
+			s.summary("후속 작업 예약: " + schedule.describe());
+			return map("status", "SCHEDULED", "taskId", child.getId(), "schedule", schedule.describe(),
+				"note", "후속 작업이 등록되었습니다. 한도와 예산은 이 작업과 공유됩니다.");
 		}
-		if (amount != null && amount > 0) {
-			params.put("amount", amount);
-		}
-		if (price != null && price > 0) {
-			params.put("price", price);
-		}
-		String size = quantity != null && quantity > 0 ? quantity + "주" : plan.currency().format(bd(amount));
-		String title = when + " " + plan.name() + " " + size + " " + plan.sideLabel();
-		return finishSchedule(s, account, ScheduledTask.Kind.ORDER, title, at, when, params, plan, null, null, 0);
-	}
 
-	@Tool(name = "schedule_recommend_buy", description = "지정한 시각에 AI 추천 종목을 골라 정해진 예산 한도 안에서 자동 매수하도록 예약합니다. "
-		+ "예: '내일 오전 9시에 추천 종목 200만원어치 사줘'. 실행 시점에 상승이 예측되는 상위 종목만 매수하고 예산을 균등 배분합니다. "
-		+ "시각은 현재 시각 기준으로 계산한 절대 시각(ISO 8601)으로 전달하세요.")
-	public Object scheduleRecommendBuy(
-		@ToolParam(description = "총 예산(국내는 원, 미국은 달러)") Double budget,
-		@ToolParam(description = "실행 시각. 예: 2026-10-25T09:00") String runAt,
-		@ToolParam(description = "KRX(한국, 기본) 또는 US(미국)", required = false) String market,
-		@ToolParam(description = "매수할 종목 수(1~10). 기본 3", required = false) Integer count,
-		ToolContext ctx
-	) {
-		ChatSession s = session(ctx);
-		if (!s.allowOrderCall()) {
-			throw ApiException.of(ErrorCode.ORDER_INVALID, "한 번의 답변에서 만들 수 있는 예약 수를 초과했습니다.");
+		boolean wantsAutonomy = Boolean.TRUE.equals(autonomous);
+		Limits limits = null;
+		if (budget != null && budget > 0) {
+			Currency cur = schedule.marketEnum() != null && schedule.marketEnum().overseas() ? Currency.USD : Currency.KRW;
+			limits = new Limits(cur.round(BigDecimal.valueOf(budget)), cur.name(), maxPositionPct, null, maxLossPct).normalized();
 		}
-		if (budget == null || budget <= 0) {
-			throw ApiException.of(ErrorCode.ORDER_INVALID, "예산 금액이 필요합니다.");
+		if (wantsAutonomy && limits == null && !account.isPaper()) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID,
+				"실전 계좌에서 자동으로 주문하려면 총 예산(budget)이 필요합니다. 사용자에게 예산을 물어보세요.");
 		}
-		MemberAccount account = s.account();
-		boolean us = market != null && (market.equalsIgnoreCase("US") || market.equalsIgnoreCase("NASDAQ")
-			|| market.equalsIgnoreCase("NYSE") || market.equalsIgnoreCase("AMEX"));
-		Market zoneMarket = us ? Market.NASDAQ : Market.KRX;
-		int n = count == null ? 3 : Math.max(1, Math.min(count, 10));
-		BigDecimal budgetValue = zoneMarket.currency().round(BigDecimal.valueOf(budget));
+		String planText = schedule.describe();
 
-		// 실전 계좌는 총 예산도 1회 주문 한도 이내로 제한한다.
-		if (!account.isPaper()) {
-			planner.enforceLimits(account, new Plan(zoneMarket, "-", "-", "BUY", 1, budgetValue, budgetValue, ""));
+		if (account.isPaper() || !wantsAutonomy) {
+			AgentTask t = agentTasks.create(new AgentTaskService.CreateSpec(account, s.conversationId(), null, title, instruction,
+				null, schedule, limits, wantsAutonomy, null, AgentTask.CreatedBy.USER));
+			s.card("agent_tasks", List.of(agentTasks.toDto(t)));
+			s.summary("자동 실행 등록: " + planText);
+			return map("status", "SCHEDULED", "taskId", t.getId(), "schedule", planText,
+				"account", account.isPaper() ? "모의 계좌" : "실전 계좌",
+				"note", "해당 일정에 서버가 AI를 깨워 작업을 수행하고, 결과를 이 대화에 남깁니다."
+					+ (account.isPaper() ? "" : " 이 작업은 사용자 확인 없이 주문할 수 없습니다(조회·보고만 가능)."));
 		}
-		java.time.Instant at = scheduleService.parseRunAt(runAt, zoneMarket);
-		String when = scheduleService.humanTime(at, zoneMarket);
-
-		Map<String, Object> params = new LinkedHashMap<>();
-		params.put("market", us ? "US" : "KRX");
-		params.put("budget", budgetValue);
-		params.put("count", n);
-		String title = when + " 추천 종목 " + zoneMarket.currency().format(budgetValue) + " 매수";
-		return finishSchedule(s, account, ScheduledTask.Kind.RECOMMEND_BUY, title, at, when, params, null, zoneMarket,
-			budgetValue, n);
-	}
-
-	private Object finishSchedule(ChatSession s, MemberAccount account, ScheduledTask.Kind kind, String title,
-		java.time.Instant at, String when, Map<String, Object> params, Plan plan, Market zoneMarket, BigDecimal budget,
-		int count) {
-		if (account.isPaper()) {
-			ScheduledTask t = scheduleService.create(account, s.conversationId(), kind, title, at, params);
-			ScheduledTaskDto dto = scheduleService.list(s.memberId(), account.getId(), null).stream()
-				.filter(x -> x.id().equals(t.getId())).findFirst().orElse(null);
-			s.card("scheduled_tasks", dto == null ? List.of() : List.of(dto));
-			s.summary("예약 등록: " + when);
-			return map("status", "SCHEDULED", "taskId", t.getId(), "runAt", when, "title", title, "account", "모의 계좌",
-				"note", "해당 시각에 서버가 자동으로 실행하고, 결과를 이 대화에 남깁니다.");
-		}
-		Action action = kind == ScheduledTask.Kind.ORDER
-			? actionService.createScheduledOrderAction(account, s.conversationId(), s.assistantMessageId(), plan, params, at, when, title)
-			: actionService.createScheduledRecommendBuyAction(account, s.conversationId(), s.assistantMessageId(), zoneMarket,
-				budget, count, at, when, title, params);
+		Action action = actionService.createAgentTaskAction(account, s.conversationId(), s.assistantMessageId(), title,
+			instruction, schedule, limits);
 		s.action(action);
 		s.summary("확인 카드 생성: " + title);
-		return map("status", "PENDING_USER_APPROVAL", "runAt", when, "title", title, "account", "실전 계좌",
-			"message", "예약은 아직 등록되지 않았습니다. 사용자가 확인 카드에서 승인해야 등록됩니다. 승인 전에는 예약되었다고 말하지 마세요.");
+		return map("status", "PENDING_USER_APPROVAL", "schedule", planText, "account", "실전 계좌",
+			"message", "자동 실행은 아직 등록되지 않았습니다. 사용자가 확인 카드에서 승인해야 시작됩니다. 승인 전에는 등록되었다고 말하지 마세요.");
 	}
 
-	@Tool(name = "list_scheduled_tasks", description = "현재 계좌에 등록된 예약 주문 목록(대기 중인 것 위주)을 조회합니다.")
-	public Object listScheduledTasks(ToolContext ctx) {
+	@Tool(name = "list_agent_tasks", description = "현재 계좌에 등록된 자동 실행(예약·반복) 작업 목록을 조회합니다.")
+	public Object listAgentTasks(ToolContext ctx) {
 		ChatSession s = session(ctx);
-		List<ScheduledTaskDto> list = scheduleService.list(s.memberId(), s.account().getId(), null);
-		s.card("scheduled_tasks", list);
+		List<AgentTaskDto> list = agentTasks.list(s.memberId(), s.account().getId(), null, null);
+		s.card("agent_tasks", list);
 		s.summary(list.size() + "건");
 		return list.stream().limit(20).map(t -> map("taskId", t.id(), "title", t.title(), "status", t.status(),
-			"runAt", t.runAt(), "result", t.resultMessage())).toList();
+			"schedule", t.scheduleLabel(), "nextRunAt", t.nextRunAt(), "lastResult", t.lastResult(), "skill", t.skillName())).toList();
 	}
 
-	@Tool(name = "cancel_scheduled_task", description = "대기 중인 예약 작업을 취소합니다.")
-	public Object cancelScheduledTask(@ToolParam(description = "취소할 예약 번호(taskId)") Long taskId, ToolContext ctx) {
+	@Tool(name = "manage_agent_task", description = "자동 실행 작업을 일시정지(PAUSE), 다시 시작(RESUME), 중지(CANCEL)합니다. 사용자가 명확히 요청했을 때만 사용하세요.")
+	public Object manageAgentTask(
+		@ToolParam(description = "대상 작업 번호(taskId)") Long taskId,
+		@ToolParam(description = "PAUSE, RESUME, CANCEL 중 하나") String action,
+		ToolContext ctx
+	) {
 		ChatSession s = session(ctx);
-		ScheduledTaskDto dto = scheduleService.cancel(s.memberId(), taskId);
-		s.card("scheduled_tasks", List.of(dto));
-		s.summary("예약 " + taskId + " 취소");
+		String a = action == null ? "" : action.trim().toUpperCase();
+		AgentTaskDto dto = switch (a) {
+			case "PAUSE" -> agentTasks.pause(s.memberId(), taskId);
+			case "RESUME" -> agentTasks.resume(s.memberId(), taskId);
+			case "CANCEL" -> agentTasks.cancel(s.memberId(), taskId);
+			default -> throw ApiException.of(ErrorCode.AGENT_INVALID, "action 은 PAUSE, RESUME, CANCEL 중 하나여야 합니다.");
+		};
+		s.card("agent_tasks", List.of(dto));
+		s.summary("작업 " + taskId + " " + a);
 		return map("status", dto.status(), "title", dto.title());
+	}
+
+	@Tool(name = "save_task_memory", description = "자동 실행 중에만 사용합니다. 다음 실행 때 참고할 내용(고른 종목, 기준가, 진행 상황 등)을 간결하게 저장합니다. 저장하면 이전 메모는 덮어써집니다.")
+	public Object saveTaskMemory(@ToolParam(description = "저장할 메모. 2000자 이내로 핵심만") String memory, ToolContext ctx) {
+		ChatSession s = session(ctx);
+		if (s.agentTaskId() == null) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "작업 메모는 자동 실행 중에만 저장할 수 있습니다.");
+		}
+		String text = memory == null ? "" : memory.trim();
+		if (text.length() > 2000) {
+			text = text.substring(0, 2000);
+		}
+		agentTasks.saveMemory(s.agentTaskId(), text);
+		s.summary("메모 저장");
+		return map("status", "SAVED", "length", text.length());
+	}
+
+	@Tool(name = "list_skills", description = "사용자가 '스킬' 메뉴에서 켤 수 있는 자동매매 등 미리 만들어진 스킬 목록을 조회합니다. "
+		+ "사용자가 정해진 전략의 자동 매매를 원하면 스킬 메뉴를 안내하세요.")
+	public Object listSkills(ToolContext ctx) {
+		ChatSession s = session(ctx);
+		s.summary(skills.all().size() + "개 스킬");
+		return skills.all().stream().map(k -> map("id", k.id(), "name", k.name(), "summary", k.summary(),
+			"category", k.category(), "placesOrders", k.trades())).toList();
 	}
 
 	// ─────────────────────────── 이전 대화 ───────────────────────────

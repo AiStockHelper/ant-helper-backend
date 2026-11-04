@@ -25,10 +25,13 @@ import com.backend.domains.chat.entity.ChatAction;
 import com.backend.domains.chat.repository.ChatActionRepository;
 import com.backend.domains.chat.repository.ChatConversationRepository;
 import com.backend.domains.member.domain.MemberAccount;
-import com.backend.domains.schedule.ScheduleService;
-import com.backend.domains.schedule.ScheduledTask;
+import com.backend.domains.agent.AgentTask;
+import com.backend.domains.agent.AgentTaskService;
+import com.backend.domains.agent.Limits;
+import com.backend.domains.agent.Schedule;
 import com.backend.domains.trade.TradePlanner;
 import com.backend.domains.trade.TradePlanner.Plan;
+import com.backend.market.Currency;
 import com.backend.market.Market;
 import com.backend.market.MarketDataService;
 import com.backend.market.dto.MarketDtos.OrderOutcome;
@@ -57,7 +60,7 @@ public class ActionService {
 	private final TradePlanner planner;
 	private final TradingService tradingService;
 	private final MarketDataService marketData;
-	private final ScheduleService scheduleService;
+	private final AgentTaskService agentTaskService;
 	private final TransactionTemplate tx;
 	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
@@ -77,43 +80,30 @@ public class ActionService {
 			planner.details(account, plan), payload);
 	}
 
-	public Action createScheduledOrderAction(MemberAccount account, Long conversationId, Long messageId, Plan plan,
-		Map<String, Object> taskParams, Instant runAt, String runAtLabel, String taskTitle) {
+	public Action createAgentTaskAction(MemberAccount account, Long conversationId, Long messageId, String title,
+		String instruction, Schedule schedule, Limits limits) {
 		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("taskKind", ScheduledTask.Kind.ORDER.name());
-		payload.put("title", taskTitle);
-		payload.put("runAt", runAt.toString());
-		payload.put("params", taskParams);
-		payload.put("marketForLimit", plan.market().name());
-		List<Detail> details = new java.util.ArrayList<>(planner.details(account, plan));
-		details.add(0, new Detail("실행 시각", runAtLabel));
-		details.add(new Detail("가격 기준", "실행 시점의 시세로 다시 계산됩니다"));
-		String summary = runAtLabel + "에 자동으로 주문합니다. 실행 시점의 시세로 수량·가격이 다시 계산될 수 있습니다.";
-		return create(account, conversationId, messageId, ChatAction.Kind.SCHEDULED_ORDER, taskTitle, summary, details, payload);
+		payload.put("title", title);
+		payload.put("instruction", instruction);
+		payload.put("schedule", schedule);
+		payload.put("limits", limits);
+		payload.put("autonomous", true);
+		List<Detail> details = new java.util.ArrayList<>();
+		details.add(new Detail("계좌", account.displayName() + " (" + (account.isPaper() ? "모의" : "실전") + ")"));
+		details.add(new Detail("실행 일정", schedule.describe()));
+		details.add(new Detail("자율 주문", "허용 — 승인하면 이후에는 사람 확인 없이 AI가 한도 안에서 직접 주문합니다"));
+		if (limits != null) {
+			Currency cur = Currency.valueOf(limits.currency());
+			details.add(new Detail("총 예산(시드)", cur.format(limits.budget())));
+			details.add(new Detail("한 종목 한도", cur.format(limits.positionCap())));
+			details.add(new Detail("하루 매수 한도", cur.format(limits.dailyBuyCap())));
+			details.add(new Detail("누적 손실 한도", cur.format(limits.lossLimitAmount()) + " (넘으면 신규 매수 중단)"));
+		}
+		details.add(new Detail("지시 내용", instruction.length() > 400 ? instruction.substring(0, 400) + "…" : instruction));
+		details.add(new Detail("안전장치", "1회 주문 한도 적용 · 이 작업이 산 종목만 매도 · 언제든 일시정지/중지 가능"));
+		String summary = "승인하면 '" + schedule.describe() + "' 일정으로 AI가 지시를 수행합니다. 실전 계좌의 실제 자금이 사용됩니다.";
+		return create(account, conversationId, messageId, ChatAction.Kind.AGENT_TASK, title, summary, details, payload);
 	}
-
-	public Action createScheduledRecommendBuyAction(MemberAccount account, Long conversationId, Long messageId,
-		Market market, BigDecimal budget, int count, Instant runAt, String runAtLabel, String taskTitle,
-		Map<String, Object> taskParams) {
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("taskKind", ScheduledTask.Kind.RECOMMEND_BUY.name());
-		payload.put("title", taskTitle);
-		payload.put("runAt", runAt.toString());
-		payload.put("params", taskParams);
-		payload.put("marketForLimit", market.name());
-		List<Detail> details = List.of(
-			new Detail("계좌", account.displayName() + " (" + (account.isPaper() ? "모의" : "실전") + ")"),
-			new Detail("실행 시각", runAtLabel),
-			new Detail("시장", market.overseas() ? "미국" : "한국"),
-			new Detail("총 예산", market.currency().format(budget)),
-			new Detail("매수 종목 수", count + "개 (예산을 균등 배분)"),
-			new Detail("종목 선정", "실행 시점에 AI 예측으로 상승이 예상되는 상위 종목"),
-			new Detail("주의", "실행 시점의 시세와 예측에 따라 종목·수량이 정해집니다"));
-		String summary = runAtLabel + "에 AI가 추천 종목을 고르고 " + market.currency().format(budget) + " 한도로 매수합니다.";
-		return create(account, conversationId, messageId, ChatAction.Kind.SCHEDULED_RECOMMEND_BUY, taskTitle, summary,
-			details, payload);
-	}
-
 	private Action create(MemberAccount account, Long conversationId, Long messageId, ChatAction.Kind kind, String title,
 		String summary, List<Detail> details, Map<String, Object> payload) {
 		LocalDateTime expires = LocalDateTime.now().plusMinutes(props.getTrading().getActionTtlMinutes());
@@ -164,7 +154,9 @@ public class ActionService {
 			Map<String, Object> payload = json.read(a.getPayloadJson(), new TypeReference<Map<String, Object>>() {}, Map.of());
 			result = switch (a.getKind()) {
 				case ORDER -> executeOrder(account, payload);
-				case SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY -> registerTask(account, a, payload);
+				case AGENT_TASK -> registerAgentTask(account, a, payload);
+				case SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY -> new ActionResult(false,
+					"이 방식의 예약은 더 이상 지원하지 않습니다. 같은 내용을 다시 요청해 주세요.", null);
 			};
 			ok = result.success();
 		} catch (ApiException e) {
@@ -208,20 +200,11 @@ public class ActionService {
 			: "주문이 거절되었습니다: " + out.message(), out.orderNo());
 	}
 
-	private ActionResult registerTask(MemberAccount account, ChatAction a, Map<String, Object> payload) {
-		Instant runAt = Instant.parse(String.valueOf(payload.get("runAt")));
-		if (runAt.isBefore(Instant.now().plusSeconds(5))) {
-			return new ActionResult(false, "예약 실행 시각이 이미 지났습니다. 다시 요청해 주세요.", null);
-		}
-		@SuppressWarnings("unchecked")
-		Map<String, Object> params = (Map<String, Object>)payload.get("params");
-		ScheduledTask.Kind kind = ScheduledTask.Kind.valueOf(String.valueOf(payload.get("taskKind")));
-		ScheduledTask t = scheduleService.create(account, a.getConversationId(), kind, String.valueOf(payload.get("title")),
-			runAt, params);
-		return new ActionResult(true, "예약되었습니다. (예약 번호 " + t.getId() + ") 실행 결과는 이 대화와 '내 계좌 > 예약'에서 확인할 수 있습니다.",
+	private ActionResult registerAgentTask(MemberAccount account, ChatAction a, Map<String, Object> payload) {
+		AgentTask t = agentTaskService.createFromApproval(account, a.getConversationId(), payload);
+		return new ActionResult(true, "자동 실행이 시작되었습니다. (작업 번호 " + t.getId() + ") 결과는 이 대화와 '내 계좌 > 자동화'에서 확인하고, 언제든 일시정지·중지할 수 있습니다.",
 			String.valueOf(t.getId()));
 	}
-
 	private ChatAction require(Long memberId, Long id) {
 		return actions.findByIdAndMemberId(id, memberId).orElseThrow(() -> ApiException.from(ErrorCode.ACTION_NOT_FOUND));
 	}

@@ -78,6 +78,47 @@ public class LlmGateway {
 			.chatResponse();
 	}
 
+	public record Completion(String text, Provider provider) {
+	}
+
+	/**
+	 * 사람 없이 도는 자동 실행용 블로킹 호출. GPT 가 실패하면 Claude 로 넘어가되,
+	 * 이미 주문이 접수된 뒤라면(noRetry) 같은 주문이 중복되지 않도록 재시도하지 않는다.
+	 */
+	public Completion callWithTools(String system, String user, ToolCallback[] tools, Map<String, Object> toolContext,
+		java.util.function.BooleanSupplier noRetry) {
+		RuntimeException last = null;
+		for (Provider p : new Provider[] {Provider.GPT, Provider.CLAUDE}) {
+			if (p == Provider.GPT && !gptPermitted()) {
+				continue;
+			}
+			long started = System.nanoTime();
+			try {
+				String out = (p == Provider.GPT ? openAi : claude).prompt()
+					.system(system)
+					.user(user)
+					.toolCallbacks(tools)
+					.toolContext(toolContext)
+					.call()
+					.content();
+				if (p == Provider.GPT) {
+					gptSucceeded(System.nanoTime() - started);
+				}
+				return new Completion(out == null ? "" : out, p);
+			} catch (RuntimeException e) {
+				if (p == Provider.GPT) {
+					gptFailed(System.nanoTime() - started, e);
+				}
+				log.warn("{} 자동 실행 호출 실패: {}", p, e.toString());
+				last = e;
+				if (noRetry.getAsBoolean()) {
+					break;
+				}
+			}
+		}
+		throw last != null ? last : new IllegalStateException("사용 가능한 AI 모델이 없습니다.");
+	}
+
 	/** 짧은 단발 호출(대화 제목 생성 등). 실패하면 null. */
 	public String complete(String system, String user) {
 		for (Provider p : new Provider[] {Provider.GPT, Provider.CLAUDE}) {

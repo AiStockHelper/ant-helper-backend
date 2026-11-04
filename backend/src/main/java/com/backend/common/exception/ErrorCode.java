@@ -26,6 +26,7 @@ public enum ErrorCode {
 	INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다.", "S-004"),
 	REISSUE_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "액세스 토큰이 만료되었습니다. 재발급이 필요합니다.", "S-005"),
 	INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.", "S-006"),
+	SIGNUP_NOT_ALLOWED(HttpStatus.FORBIDDEN, "가입이 허용되지 않은 이메일입니다. 현재는 승인된 사용자만 가입할 수 있습니다.", "S-007"),
 
 	// Member 예외
 	MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 회원을 찾을 수 없습니다.", "M-001"),
@@ -84,8 +85,15 @@ public enum ErrorCode {
 	NOT_ENOUGH_CANDLES(HttpStatus.UNPROCESSABLE_ENTITY, "예측에 필요한 시세 데이터가 부족합니다.", "MK-005"),
 	ORDER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "1회 주문 한도를 초과했습니다.", "TR-001"),
 	ORDER_INVALID(HttpStatus.BAD_REQUEST, "주문 정보가 올바르지 않습니다.", "TR-002"),
-	SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "예약 작업을 찾을 수 없습니다.", "TR-003"),
-	SCHEDULE_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 없는 예약 작업입니다.", "TR-004"),
+
+	// 자동 실행(에이전트) / 스킬
+	AGENT_TASK_NOT_FOUND(HttpStatus.NOT_FOUND, "자동 실행 작업을 찾을 수 없습니다.", "AG-001"),
+	AGENT_INVALID(HttpStatus.BAD_REQUEST, "자동 실행 설정이 올바르지 않습니다.", "AG-002"),
+	AGENT_LIMIT(HttpStatus.CONFLICT, "자동 실행 작업 개수 한도를 초과했습니다.", "AG-003"),
+	AGENT_CONFIRM_REQUIRED(HttpStatus.BAD_REQUEST, "실전 계좌 자동 매매는 확인 절차가 필요합니다.", "AG-004"),
+	AGENT_STATE_CONFLICT(HttpStatus.CONFLICT, "현재 상태에서는 할 수 없는 작업입니다.", "AG-005"),
+	SKILL_NOT_FOUND(HttpStatus.NOT_FOUND, "스킬을 찾을 수 없습니다.", "AG-006"),
+	AGENT_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "자동 실행 기능이 서버 설정으로 꺼져 있습니다.", "AG-007"),
 
 	// 기타
 	AUTO_TRADE_STATE_OFF(HttpStatus.INTERNAL_SERVER_ERROR, "자동 거래 상태가 꺼져 있습니다.", "AT-001"),

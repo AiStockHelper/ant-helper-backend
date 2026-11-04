@@ -26,15 +26,17 @@ public class EventingToolCallback implements ToolCallback {
 		Map.entry("get_quote", "현재가 조회"),
 		Map.entry("get_candles", "차트 데이터 조회"),
 		Map.entry("predict_stock", "AI 예측"),
-		Map.entry("recommend_stocks", "추천 종목 분석"),
+		Map.entry("recommend_stocks", "모델 추천 종목 분석"),
+		Map.entry("show_llm_picks", "AI 의견 정리"),
 		Map.entry("get_account_summary", "계좌 잔고 조회"),
 		Map.entry("get_order_history", "주문·체결 내역 조회"),
 		Map.entry("place_order", "주문 준비"),
 		Map.entry("cancel_order", "주문 취소"),
-		Map.entry("schedule_order", "예약 주문 준비"),
-		Map.entry("schedule_recommend_buy", "예약 추천매수 준비"),
-		Map.entry("list_scheduled_tasks", "예약 목록 조회"),
-		Map.entry("cancel_scheduled_task", "예약 취소"),
+		Map.entry("schedule_task", "자동 실행 예약"),
+		Map.entry("list_agent_tasks", "자동 실행 목록 조회"),
+		Map.entry("manage_agent_task", "자동 실행 관리"),
+		Map.entry("save_task_memory", "작업 메모 저장"),
+		Map.entry("list_skills", "스킬 목록 조회"),
 		Map.entry("get_market_status", "장 운영 상태 확인"),
 		Map.entry("search_chat_history", "이전 대화 검색")
 	);
@@ -65,6 +67,15 @@ public class EventingToolCallback implements ToolCallback {
 		String name = delegate.getToolDefinition().name();
 		String id = UUID.randomUUID().toString();
 		String label = label(name, toolInput);
+		if (session != null && !session.allowToolCall()) {
+			String msg = "이번 실행에서 부를 수 있는 도구 호출 한도(" + session.toolCallLimit() + "회)를 넘었습니다. 지금까지의 결과로 마무리하세요.";
+			session.tool(new ToolCall(id, name, label, "ERROR", msg));
+			try {
+				return mapper.writeValueAsString(Map.of("error", msg));
+			} catch (Exception ex) {
+				return "{\"error\":\"도구 호출 한도 초과\"}";
+			}
+		}
 		if (session != null) {
 			session.tool(new ToolCall(id, name, label, "RUNNING", null));
 		}

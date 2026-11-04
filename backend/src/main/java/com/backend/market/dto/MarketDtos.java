@@ -40,7 +40,9 @@ public final class MarketDtos {
 	public record Recommendation(
 		String productNumber, String name, Market market, Currency currency,
 		BigDecimal currentPrice, double score, double predictedChangeRate,
-		String direction, double confidence, List<String> reasons
+		String direction, double confidence, List<String> reasons,
+		/** 분석 기준 거래일(yyyy-MM-dd). 야간 배치 결과일 때만 값이 있다. */
+		String asOf
 	) {
 	}
 

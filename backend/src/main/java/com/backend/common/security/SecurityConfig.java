@@ -13,7 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.logout.LogoutFilter;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -21,7 +21,6 @@ import com.backend.common.properties.SecurityProperties;
 import com.backend.common.security.filter.exceptionHandlingFilter.ExceptionHandlingFilter;
 import com.backend.common.security.filter.jwtFilter.JwtAuthenticationFilter;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
-import com.backend.common.security.filter.loginFilter.LoginFilter;
 import com.backend.domains.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -66,8 +65,7 @@ public class SecurityConfig {
 
 		//필터 체인 추가
 		http
-			.addFilterAfter(loginFilter(), LogoutFilter.class)
-			.addFilterBefore(jwtAuthenticationFilter(), LoginFilter.class)
+			.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
 			.addFilterBefore(exceptionHandlingFilter(), JwtAuthenticationFilter.class);
 
 		return http.build();
@@ -81,15 +79,6 @@ public class SecurityConfig {
 		provider.setPasswordEncoder(passwordEncoder);
 
 		return new ProviderManager(provider);
-	}
-
-	@Bean
-	public LoginFilter loginFilter() {
-		LoginFilter loginFilter = new LoginFilter(jwtTokenProvider, memberRepository);
-
-		loginFilter.setAuthenticationManager(authenticationManager());
-
-		return loginFilter;
 	}
 
 	@Bean

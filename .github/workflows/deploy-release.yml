@@ -1,4 +1,4 @@
-name: Deploy backend (release → ECR → EC2)
+name: Deploy backend (release → EC2)
 
 on:
   push:
@@ -8,18 +8,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-release
+  group: deploy-backend
   cancel-in-progress: false
 
 permissions:
   contents: read
 
-env:
-  ECR_REPOSITORY: ant-helper-backend
-
 jobs:
-  test:
-    name: Unit tests
+  build:
+    name: Test & build jar
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,118 +34,99 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # BackendApplicationTests(@SpringBootTest)는 MySQL/Redis와 yml 설정이 필요해 CI에서 제외한다.
+      # BackendApplicationTests(@SpringBootTest)는 MySQL/Redis 와 설정이 필요해 CI 에서 제외한다.
       - name: Unit tests
         run: ./gradlew test --tests 'com.backend.market.*' --tests 'com.backend.domains.*' --console=plain
 
-  image:
-    name: Build & push image (ECR)
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build jar
+        run: ./gradlew bootJar -x test --console=plain
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Configure AWS credentials
-        if: github.event_name != 'pull_request'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to ECR
-        if: github.event_name != 'pull_request'
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Ensure ECR repository
-        if: github.event_name != 'pull_request'
+      - name: Stage jar (must not contain secrets)
         run: |
-          if ! aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1; then
-            aws ecr create-repository --repository-name "$ECR_REPOSITORY" \
-              --image-scanning-configuration scanOnPush=true >/dev/null
-            aws ecr put-lifecycle-policy --repository-name "$ECR_REPOSITORY" --lifecycle-policy-text '{
-              "rules":[{"rulePriority":1,"description":"keep last 10 images",
-                "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},
-                "action":{"type":"expire"}}]}' >/dev/null || echo "::warning::could not set ECR lifecycle policy"
+          jar="$(ls build/libs/*.jar | grep -v -- '-plain.jar' | head -n 1)"
+          if unzip -l "$jar" | grep -E 'BOOT-INF/classes/application[^/]*\.(yml|yaml|properties)$'; then
+            echo "::error::jar contains application config files; runtime config must live on the server"; exit 1
           fi
+          mkdir -p ../dist
+          cp "$jar" ../dist/app.jar
 
-      - name: Build (and push on release)
-        uses: docker/build-push-action@v6
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
-          context: backend
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ github.event_name == 'pull_request' && 'ant-helper-backend:ci' || format('{0}/{1}:{2}', steps.ecr.outputs.registry, env.ECR_REPOSITORY, github.sha) }}
-            ${{ github.event_name == 'pull_request' && 'ant-helper-backend:ci-latest' || format('{0}/{1}:latest', steps.ecr.outputs.registry, env.ECR_REPOSITORY) }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: backend-jar
+          path: dist/app.jar
+          retention-days: 3
+          if-no-files-found: error
 
   deploy:
     name: Deploy to EC2
-    needs: image
+    needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
     env:
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_HOST: ${{ vars.EC2_HOST }}
+      EC2_USER: ${{ vars.EC2_USER }}
+      EC2_SG_ID: ${{ vars.EC2_SG_ID }}
+      EC2_HOST_KEY: ${{ vars.EC2_HOST_KEY }}
       EC2_KEY: ${{ secrets.EC2_KEY }}
-      APPLICATION_COMMON_YML: ${{ secrets.APPLICATION_COMMON_YML }}
-      APPLICATION_PROD_YML: ${{ secrets.APPLICATION_PROD_YML }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check required secrets
-        run: |
-          missing=0
-          for name in EC2_HOST EC2_USER EC2_KEY APPLICATION_COMMON_YML APPLICATION_PROD_YML; do
-            if [ -z "${!name}" ]; then echo "::error::GitHub secret '$name' is not set"; missing=1; fi
-          done
-          exit $missing
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: dist
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Resolve ECR registry
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Prepare SSH
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          printf '%s %s\n' "$EC2_HOST" "$EC2_HOST_KEY" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host ec2
+            HostName $EC2_HOST
+            User $EC2_USER
+            IdentityFile ~/.ssh/ec2_key
+            IdentitiesOnly yes
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 12
+          EOF
+          chmod 600 ~/.ssh/config
 
-      - name: Upload runtime config (from secrets)
+      # 보안그룹의 22번 포트는 고정 IP 에만 열려 있다. 이 러너의 IP 만 배포 동안 열고 항상 닫는다.
+      - name: Open SSH for this runner
+        id: sg
         run: |
-          mkdir -p cfg
-          printf '%s\n' "$APPLICATION_COMMON_YML" > cfg/application-common.yml
-          printf '%s\n' "$APPLICATION_PROD_YML" > cfg/application-prod.yml
-          chmod 600 cfg/*.yml
-          ssh -i ~/.ssh/ec2_key "$EC2_USER@$EC2_HOST" 'mkdir -p ~/ant-helper/incoming/config'
-          scp -i ~/.ssh/ec2_key cfg/*.yml "$EC2_USER@$EC2_HOST:ant-helper/incoming/config/"
+          ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
+          if ! out="$(aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${ip}/32,Description=gha-${GITHUB_REPOSITORY#*/}-${GITHUB_RUN_ID}}]" 2>&1)"; then
+            echo "$out"; grep -q 'InvalidPermission.Duplicate' <<< "$out" || exit 1
+          fi
+          for i in $(seq 1 12); do ssh ec2 true && exit 0; sleep 5; done
+          echo "::error::cannot reach EC2 over SSH"; exit 1
 
-      # EC2 에 aws cli/인스턴스 역할이 없어도 되도록, 러너에서 만든 ECR 토큰을 ssh 로 넘겨 docker login 한다.
-      - name: Docker login on EC2 (ECR)
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
+      - name: Upload jar
+        run: scp dist/app.jar ec2:/opt/antlab/ant-backend/app.jar.new
+
+      - name: Switch jar, restart & health check
+        run: ssh ec2 'bash -s' < .github/scripts/remote-deploy.sh
+
+      - name: Close SSH for this runner
+        if: always() && steps.sg.outputs.ip != ''
         run: |
-          aws ecr get-login-password | ssh -i ~/.ssh/ec2_key "$EC2_USER@$EC2_HOST" \
-            "command -v docker >/dev/null || { sudo apt-get update -y && sudo apt-get install -y docker.io curl && sudo systemctl enable --now docker; }; \
-             sudo docker login --username AWS --password-stdin $REGISTRY"
-
-      - name: Switch container & health check
-        env:
-          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-        run: ssh -i ~/.ssh/ec2_key "$EC2_USER@$EC2_HOST" "IMAGE=$IMAGE bash -s" < .github/scripts/remote-deploy.sh
-
-      - name: Cleanup SSH key
-        if: always()
-        run: rm -f ~/.ssh/ec2_key
+          aws ec2 revoke-security-group-ingress --group-id "$EC2_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${{ steps.sg.outputs.ip }}/32}]" >/dev/null || true
+          rm -f ~/.ssh/ec2_key

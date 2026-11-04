@@ -40,7 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		boolean result = Arrays.stream(securityProperties.getPermitUrls())
 			.anyMatch(permitUrl -> pathMatcher.match(permitUrl, path));
 
-		log.info("JwtAuthenticationFilter.shouldNotFilter({}) : {}", path, result);
+		log.debug("JwtAuthenticationFilter.shouldNotFilter({}) : {}", path, result);
 
 		return result;
 	}
@@ -63,25 +63,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			log.info("refresh토큰 인증 성공");
 			jwtTokenProvider.checkRefreshTokenAndReIssueAccessAndRefreshToken(response, refreshToken);
 		} else if (refreshToken != null && !jwtTokenProvider.isTokenValid(refreshToken)) {
-			log.info("refresh토큰 인증 실패");
+			log.warn("refresh토큰 인증 실패: {} {}", request.getMethod(), request.getRequestURI());
 			throw ApiException.from(INVALID_REFRESH_TOKEN);
 		} else if (accessToken != null && jwtTokenProvider.isTokenValid(accessToken)) {
 
 			//토큰이 logout된 토큰인지 검사
 			if (jwtTokenProvider.isLogout(accessToken)) {
-				log.info("logout된 accessToken으로 인증 실패");
+				log.warn("logout된 accessToken으로 인증 실패: {} {}", request.getMethod(), request.getRequestURI());
 				throw ApiException.from(INVALID_ACCESS_TOKEN);
 			}
 
-			log.info("access토큰 인증 성공");
 			Authentication authentication = jwtTokenProvider.getAuthentication(accessToken);
 			saveAuthentication(authentication);
+			org.slf4j.MDC.put("memberId", String.valueOf(authentication.getPrincipal()));
+			log.debug("access토큰 인증 성공: memberId={}", authentication.getPrincipal());
 			filterChain.doFilter(request, response);
 		} else if (accessToken != null && !jwtTokenProvider.isTokenValid(accessToken)) {
-			log.info("access토큰 인증 실패");
+			log.warn("access토큰 만료/무효: {} {}", request.getMethod(), request.getRequestURI());
 			throw ApiException.from(REISSUE_ACCESS_TOKEN);
 		} else {
-			log.info("인증 실패");
+			log.warn("인증 정보 없음: {} {}", request.getMethod(), request.getRequestURI());
 			throw ApiException.from(ErrorCode.UNAUTHORIZED);
 		}
 	}

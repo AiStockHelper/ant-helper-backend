@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 
 import com.backend.domains.aiServer.entity.DomesticStockPredictedPrice;
 
-public interface DomesticStockPredictedPriceRepository extends JpaRepository<DomesticStockPredictedPriceRepository, Long> {
+public interface DomesticStockPredictedPriceRepository extends JpaRepository<DomesticStockPredictedPrice, Long> {
 
 	@Query(
 		"SELECT dsp FROM DomesticStockPredictedPrice dsp WHERE (dsp.predictedPrice - dsp.todayPrice) / dsp.todayPrice >= 3.0"

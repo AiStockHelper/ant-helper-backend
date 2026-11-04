@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
+import com.backend.domains.auth.service.SignupPolicy;
 import com.backend.domains.email.EmailUtil;
 import com.backend.domains.email.domain.EmailCode;
 import com.backend.domains.email.repository.EmailCodeRepository;
@@ -25,6 +26,7 @@ public class EmailVerificationService {
 	private final EmailTokenService emailTokenService;
 	private final EmailCodeRepository emailCodeRepository;
 	private final MemberService memberService;
+	private final SignupPolicy signupPolicy;
 	private final EmailUtil emailUtil;
 
 	private static final String EMAIL_TITLE = "ANT HELPER 이메일 인증 코드";
@@ -35,6 +37,7 @@ public class EmailVerificationService {
 	public void validateEmailAndSendEmailVerification(SendVerificationCodeRequest request) {
 		String email = request.getEmail();
 
+		signupPolicy.requireAllowed(email);
 		memberService.validateDuplicatedEmail(email);
 
 		// 본문

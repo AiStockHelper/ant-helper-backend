@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 import com.backend.common.properties.AiServerProperties;
+import com.backend.common.properties.AppProperties;
 import com.backend.common.properties.CorsProperties;
 import com.backend.common.properties.EmailProperties;
 import com.backend.common.properties.JwtProperties;
@@ -19,6 +20,7 @@ import com.backend.common.properties.SecurityProperties;
 	CorsProperties.class,
 	EmailProperties.class,
 	AiServerProperties.class,
+	AppProperties.class,
 	PublicDataPortalProperties.class,
 })
 public class PropertiesConfig {

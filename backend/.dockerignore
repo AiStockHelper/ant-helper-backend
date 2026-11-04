@@ -1,0 +1,9 @@
+.gradle
+build
+log
+.idea
+.git
+src/main/resources/*.yml
+src/main/resources/*.properties
+Dockerfile
+.dockerignore

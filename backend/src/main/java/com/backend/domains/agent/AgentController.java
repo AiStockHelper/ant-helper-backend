@@ -36,6 +36,7 @@ public class AgentController {
 	private final SkillRegistry registry;
 	private final AgentTradingService trading;
 	private final com.backend.domains.account.AccountService accountService;
+	private final com.backend.domains.auth.otp.StepUpService stepUp;
 
 	// ─────────────────────────── 스킬 ───────────────────────────
 
@@ -95,6 +96,9 @@ public class AgentController {
 	public ResponseEntity<DataResponse<Map<String, Object>>> liquidate(@AuthenticationPrincipal Long memberId, @PathVariable Long id) {
 		AgentTask t = taskService.require(memberId, id);
 		var account = accountService.requireOwned(memberId, t.getAccountId());
+		if (!account.isPaper()) {
+			stepUp.require(memberId);
+		}
 		List<String> lines = new java.util.ArrayList<>();
 		var outcomes = trading.liquidate(t, account, lines);
 		return ResponseEntity.ok(DataResponse.from(Map.of("orders", outcomes.size(), "lines", lines)));

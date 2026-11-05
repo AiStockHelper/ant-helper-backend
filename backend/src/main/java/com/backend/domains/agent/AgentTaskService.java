@@ -69,6 +69,7 @@ public class AgentTaskService {
 	private final AgentTradingService trading;
 	private final AppProperties props;
 	private final Json json;
+	private final com.backend.domains.auth.otp.StepUpService stepUp;
 
 	// ─────────────────────────── 생성 ───────────────────────────
 
@@ -142,8 +143,11 @@ public class AgentTaskService {
 		boolean real = !account.isPaper();
 		if (req.skillId() != null && !req.skillId().isBlank()) {
 			Skill skill = registry.require(req.skillId());
-			if (real && skill.trades() && !Boolean.TRUE.equals(req.confirmRealTrading())) {
-				throw ApiException.from(ErrorCode.AGENT_CONFIRM_REQUIRED);
+			if (real && skill.trades()) {
+				if (!Boolean.TRUE.equals(req.confirmRealTrading())) {
+					throw ApiException.from(ErrorCode.AGENT_CONFIRM_REQUIRED);
+				}
+				stepUp.require(memberId);
 			}
 			Map<String, Object> cfg = skill.normalize(req.config());
 			Long conversationId = newConversation(account, "🤖 " + skill.name());
@@ -152,8 +156,11 @@ public class AgentTaskService {
 			return toDto(t);
 		}
 		boolean autonomous = Boolean.TRUE.equals(req.autonomous());
-		if (autonomous && real && !Boolean.TRUE.equals(req.confirmRealTrading())) {
-			throw ApiException.from(ErrorCode.AGENT_CONFIRM_REQUIRED);
+		if (autonomous && real) {
+			if (!Boolean.TRUE.equals(req.confirmRealTrading())) {
+				throw ApiException.from(ErrorCode.AGENT_CONFIRM_REQUIRED);
+			}
+			stepUp.require(memberId);
 		}
 		Limits limits = req.budget() == null ? null : new Limits(req.budget(), currencyOf(req.schedule()), req.maxPositionPct(),
 			null, req.maxLossPct()).normalized();
@@ -239,8 +246,10 @@ public class AgentTaskService {
 		if (t.getStatus() != AgentTask.Status.PAUSED) {
 			throw ApiException.of(ErrorCode.AGENT_STATE_CONFLICT, "일시정지된 작업만 다시 시작할 수 있습니다.");
 		}
-		if (!accounts.existsById(t.getAccountId())) {
-			throw ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND);
+		MemberAccount account = accounts.findById(t.getAccountId())
+			.orElseThrow(() -> ApiException.from(ErrorCode.MEMBER_ACCOUNT_NOT_FOUND));
+		if (t.isAutonomous() && !account.isPaper()) {
+			stepUp.require(memberId);
 		}
 		Schedule schedule = scheduleOf(t);
 		Instant next = schedule.next(Instant.now(), calendar).orElseThrow(() ->

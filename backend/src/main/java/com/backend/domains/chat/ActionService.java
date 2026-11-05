@@ -37,6 +37,7 @@ import com.backend.market.MarketDataService;
 import com.backend.market.dto.MarketDtos.OrderOutcome;
 import com.backend.market.dto.MarketDtos.OrderRequest;
 import com.backend.market.TradingService;
+import com.backend.market.queue.OrderSource;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import lombok.RequiredArgsConstructor;
@@ -61,6 +62,8 @@ public class ActionService {
 	private final TradingService tradingService;
 	private final MarketDataService marketData;
 	private final AgentTaskService agentTaskService;
+	private final com.backend.domains.auth.otp.StepUpService stepUp;
+	private final com.backend.common.security.audit.SecurityAudit audit;
 	private final TransactionTemplate tx;
 	private final com.backend.common.logging.ErrorEventRecorder recorder;
 
@@ -141,6 +144,12 @@ public class ActionService {
 				json.write(new ActionResult(false, "확인 유효시간이 지나 만료되었습니다.", null)))));
 			return mapper.action(require(memberId, id));
 		}
+		if (a.getStatus() == ChatAction.Status.PENDING && a.getAccountId() != null
+			&& (a.getKind() == ChatAction.Kind.ORDER || a.getKind() == ChatAction.Kind.AGENT_TASK)
+			&& !accountService.requireOwned(memberId, a.getAccountId()).isPaper()) {
+			// 실계좌 주문·자동매매 승인은 이메일 인증번호를 한 번 더 확인한 뒤에만 진행한다(승인 카드는 그대로 남는다).
+			stepUp.require(memberId);
+		}
 		Boolean claimed = tx.execute(s -> actions.claim(id) == 1);
 		if (!Boolean.TRUE.equals(claimed)) {
 			throw ApiException.from(ErrorCode.ACTION_NOT_PENDING);
@@ -153,7 +162,7 @@ public class ActionService {
 			MemberAccount account = accountService.requireOwned(memberId, a.getAccountId());
 			Map<String, Object> payload = json.read(a.getPayloadJson(), new TypeReference<Map<String, Object>>() {}, Map.of());
 			result = switch (a.getKind()) {
-				case ORDER -> executeOrder(account, payload);
+				case ORDER -> executeOrder(account, a, payload);
 				case AGENT_TASK -> registerAgentTask(account, a, payload);
 				case SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY -> new ActionResult(false,
 					"이 방식의 예약은 더 이상 지원하지 않습니다. 같은 내용을 다시 요청해 주세요.", null);
@@ -170,6 +179,11 @@ public class ActionService {
 			result = new ActionResult(false, "처리 중 오류가 발생했습니다: " + e.getMessage(), null);
 			ok = false;
 		}
+		if (ok && a.getAccountId() != null) {
+			audit.record(a.getKind() == ChatAction.Kind.AGENT_TASK ? com.backend.common.security.audit.SecurityAudit.AGENT_STARTED
+				: com.backend.common.security.audit.SecurityAudit.ORDER_APPROVED, memberId, null, null,
+				"action=" + id + " account=" + a.getAccountId() + " " + a.getTitle());
+		}
 		final ActionResult finalResult = result;
 		final ChatAction.Status status = ok ? ChatAction.Status.EXECUTED : ChatAction.Status.FAILED;
 		log.info("확인 카드 처리 결과 actionId={} status={} message={}", id, status, finalResult.message());
@@ -180,7 +194,7 @@ public class ActionService {
 		});
 	}
 
-	private ActionResult executeOrder(MemberAccount account, Map<String, Object> p) {
+	private ActionResult executeOrder(MemberAccount account, ChatAction action, Map<String, Object> p) {
 		Market market = Market.parse(String.valueOf(p.get("market")));
 		String symbol = String.valueOf(p.get("productNumber"));
 		String side = String.valueOf(p.get("side"));
@@ -194,7 +208,10 @@ public class ActionService {
 		planner.enforceLimits(account, plan);
 		planner.requireMarketOpen(market);
 
-		OrderOutcome out = tradingService.placeOrder(account, new OrderRequest(market, symbol, side, qty, limit));
+		OrderOutcome out = planner.execute(account, plan, OrderSource.chat(action.getId(), action.getConversationId()));
+		if (out.pending()) {
+			return new ActionResult(true, out.message(), null);
+		}
 		return new ActionResult(out.success(), out.success()
 			? plan.name() + " " + qty + "주 " + plan.sideLabel() + " 주문이 접수되었습니다." + (out.orderNo() != null ? " (주문번호 " + out.orderNo() + ")" : "")
 			: "주문이 거절되었습니다: " + out.message(), out.orderNo());

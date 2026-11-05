@@ -36,7 +36,7 @@ jobs:
 
       # BackendApplicationTests(@SpringBootTest)는 MySQL/Redis 와 설정이 필요해 CI 에서 제외한다.
       - name: Unit tests
-        run: ./gradlew test --tests 'com.backend.market.*' --tests 'com.backend.domains.*' --console=plain
+        run: ./gradlew test --tests 'com.backend.market.*' --tests 'com.backend.domains.*' --tests 'com.backend.common.*' --console=plain
 
       - name: Build jar
         run: ./gradlew bootJar -x test --console=plain

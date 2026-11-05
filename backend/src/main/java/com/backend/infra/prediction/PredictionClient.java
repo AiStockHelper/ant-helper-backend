@@ -36,10 +36,18 @@ public class PredictionClient {
 			.build();
 		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
 		factory.setReadTimeout(Duration.ofSeconds(props.getPrediction().getTimeoutSeconds()));
-		this.rest = RestClient.builder()
+		RestClient.Builder builder = RestClient.builder()
 			.baseUrl(props.getPrediction().getBaseUrl())
-			.requestFactory(factory)
-			.build();
+			.requestFactory(factory);
+		String secret = props.getSecurity().getPredictionSecret();
+		if (secret == null || secret.isBlank()) {
+			secret = System.getenv("INTERNAL_API_KEY");
+		}
+		if (secret != null && !secret.isBlank()) {
+			// 예측 서버가 같은 값을 요구한다. 서버가 내부망/루프백에만 열려 있어도 한 겹 더 막는다.
+			builder.defaultHeader("X-Internal-Key", secret.trim());
+		}
+		this.rest = builder.build();
 	}
 
 	public record CandleIn(String date, double open, double high, double low, double close, long volume) {

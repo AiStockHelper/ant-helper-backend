@@ -235,6 +235,15 @@ public class TradingService {
 
 	// ─────────────────────────── 주문 ───────────────────────────
 
+	/** 주문 대기열이 쓰는 전송. 실패 원인을 분류할 수 있도록 KIS 오류(KisClientException)를 그대로 던진다. */
+	public OrderOutcome sendOrder(MemberAccount account, OrderRequest req) {
+		marketData.requireEnabled(req.market());
+		if (req.quantity() <= 0) {
+			throw ApiException.of(ErrorCode.ORDER_INVALID, "수량은 1주 이상이어야 합니다.");
+		}
+		boolean sell = "SELL".equalsIgnoreCase(req.side());
+		return doPlaceOrder(account, req, sell, marketData.nameOf(req.market(), req.productNumber()));
+	}
 	public OrderOutcome placeOrder(MemberAccount account, OrderRequest req) {
 		marketData.requireEnabled(req.market());
 		if (req.quantity() <= 0) {
@@ -266,7 +275,7 @@ public class TradingService {
 				}
 				String trId = account.isPaper() ? (sell ? "VTTT1001U" : "VTTT1002U") : (sell ? "TTTT1006U" : "TTTT1002U");
 				String price = req.limitPrice().setScale(2, RoundingMode.HALF_UP).toPlainString();
-				OrderResult res = kis.execute(account,
+				OrderResult res = kis.executeOrder(account,
 					new OrderApi(trId, req.market().orderCode(), req.productNumber(), String.valueOf(req.quantity()), price, sell));
 				return outcome(true, "주문이 접수되었습니다.", res.getOutput() == null ? null : res.getOutput().getOdno(), req, name,
 					req.limitPrice());
@@ -276,7 +285,7 @@ public class TradingService {
 			OrderCashApi api = new OrderCashApi(req.productNumber(), String.valueOf(req.quantity()), price, "KRX");
 			api.setTrId(account.isPaper() ? (sell ? "VTTC0011U" : "VTTC0012U") : (sell ? "TTTC0011U" : "TTTC0012U"));
 			api.setOrdDvsn(market ? "01" : "00");
-			OrderCashResult res = kis.execute(account, api);
+			OrderCashResult res = kis.executeOrder(account, api);
 			return outcome(true, "주문이 접수되었습니다.", res.getOutput() == null ? null : res.getOutput().getOdno(), req, name,
 				req.limitPrice());
 		} catch (com.backend.order.kis.kis_client.exception.KisClientException e) {
@@ -307,7 +316,7 @@ public class TradingService {
 				CancelApi api = new CancelApi(account.isPaper() ? "VTTT1004U" : "TTTT1004U",
 					row.getOvrsExcgCd() == null || row.getOvrsExcgCd().isBlank() ? market.orderCode() : row.getOvrsExcgCd(),
 					productNumber, orderNo, String.valueOf(dec(row.getNccsQty()).longValue()));
-				kis.execute(account, api);
+				kis.executeOrder(account, api);
 				return new OrderOutcome(true, "주문 취소가 접수되었습니다.", orderNo, "", productNumber, name, market, market.currency(),
 					dec(row.getNccsQty()).longValue(), null);
 			}
@@ -325,7 +334,7 @@ public class TradingService {
 			api.setTrId(account.isPaper() ? "VTTC0013U" : "TTTC0013U");
 			api.setRvseCnclDvsnCd("02");
 			api.setQtyAllOrdYn("Y");
-			OrderRvsecnclResult res = kis.execute(account, api);
+			OrderRvsecnclResult res = kis.executeOrder(account, api);
 			return new OrderOutcome(true, "주문 취소가 접수되었습니다.", res.getOutput() == null ? orderNo : res.getOutput().getOdno(),
 				"", productNumber, name, market, market.currency(), dec(row.getRmnQty()).longValue(), null);
 		} catch (com.backend.order.kis.kis_client.exception.KisClientException e) {

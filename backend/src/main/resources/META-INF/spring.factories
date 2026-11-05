@@ -1,0 +1,1 @@
+org.springframework.boot.env.EnvironmentPostProcessor=com.backend.common.security.HardeningEnvironmentPostProcessor

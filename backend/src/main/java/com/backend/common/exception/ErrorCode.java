@@ -27,6 +27,10 @@ public enum ErrorCode {
 	REISSUE_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "액세스 토큰이 만료되었습니다. 재발급이 필요합니다.", "S-005"),
 	INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.", "S-006"),
 	SIGNUP_NOT_ALLOWED(HttpStatus.FORBIDDEN, "가입이 허용되지 않은 이메일입니다. 현재는 승인된 사용자만 가입할 수 있습니다.", "S-007"),
+	TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "시도 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.", "S-008"),
+	INVALID_OTP(HttpStatus.UNAUTHORIZED, "인증번호가 올바르지 않거나 만료되었습니다.", "S-009"),
+	STEP_UP_REQUIRED(HttpStatus.FORBIDDEN, "실계좌 보호를 위해 이메일 인증번호 확인이 필요합니다.", "S-010"),
+	DAILY_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "계좌의 하루 주문 한도를 초과했습니다.", "S-011"),
 
 	// Member 예외
 	MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당하는 회원을 찾을 수 없습니다.", "M-001"),

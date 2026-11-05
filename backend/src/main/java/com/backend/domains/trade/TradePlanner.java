@@ -15,6 +15,8 @@ import com.backend.common.properties.AppProperties;
 import com.backend.domains.chat.dto.ChatDtos.Detail;
 import com.backend.domains.member.domain.MemberAccount;
 import com.backend.market.Currency;
+import com.backend.market.queue.OrderQueueService;
+import com.backend.market.queue.OrderSource;
 import com.backend.market.Market;
 import com.backend.market.MarketDataService;
 import com.backend.market.TradingService;
@@ -54,6 +56,7 @@ public class TradePlanner {
 	private final MarketDataService marketData;
 	private final TradingService tradingService;
 	private final AppProperties props;
+	private final OrderQueueService orderQueue;
 	private final com.backend.market.TradingCalendar calendar;
 
 	public static String normalizeSide(String side) {
@@ -142,10 +145,13 @@ public class TradePlanner {
 	}
 
 	public OrderOutcome execute(MemberAccount account, Plan plan) {
-		return tradingService.placeOrder(account,
-			new OrderRequest(plan.market(), plan.symbol(), plan.side(), plan.quantity(), plan.limitPrice()));
+		return execute(account, plan, OrderSource.manual());
 	}
 
+	/** 주문은 모두 주문 대기열(원장 적재 → 호출 줄 → 실패 시 재시도)을 거쳐 나간다. */
+	public OrderOutcome execute(MemberAccount account, Plan plan, OrderSource source) {
+		return orderQueue.place(account, plan, source);
+	}
 	/** 확인 카드에 보여줄 항목 */
 	public List<Detail> details(MemberAccount account, Plan plan) {
 		List<Detail> d = new ArrayList<>();

@@ -79,6 +79,30 @@ check() {
   sudo ls /etc/letsencrypt/live 2>/dev/null | tr '\n' ' '; echo
   sudo systemctl list-timers certbot-renew.timer --no-pager 2>/dev/null | head -3
 }
+# 로그인 인증번호는 메일로 나간다. 메일 서버 로그인이 되는지만 확인한다(메일은 보내지 않고, 값은 출력하지 않는다).
+smtp_check() {
+  sudo python3 - <<'PY'
+import re, smtplib, sys, glob
+text = ""
+for f in sorted(glob.glob("/opt/antlab/ant-backend/config/application*.yml")):
+    text += "\n" + open(f, encoding="utf-8").read()
+m = re.search(r"(?m)^mail:\s*\n((?:[ \t]+.*\n?)+)", text)
+if not m:
+    print("mail config: not found"); sys.exit(0)
+cfg = dict(re.findall(r"(?m)^[ \t]+([A-Za-z.\-]+):[ \t]*(.*?)[ \t]*$", m.group(1)))
+host, port = cfg.get("host", ""), int(cfg.get("port", "587") or 587)
+user, pw = cfg.get("username", ""), cfg.get("password", "")
+print("mail host:", host, "port:", port, "username set:", bool(user), "password set:", bool(pw))
+try:
+    s = smtplib.SMTP(host, port, timeout=15)
+    s.starttls()
+    s.login(user, pw)
+    s.quit()
+    print("SMTP login: OK")
+except Exception as e:
+    print("SMTP login: FAILED ->", type(e).__name__, str(e)[:120].replace(user, "<user>"))
+PY
+}
 install_certbot() {
   if command -v certbot >/dev/null 2>&1; then return 0; fi
   echo ">> installing certbot (python venv)"
@@ -229,6 +253,7 @@ https() {
 case "$TASK" in
   status) status ;;
   check) check ;;
+  smtp-check) smtp_check ;;
   https) https ;;
   *) echo "unknown task: $TASK"; exit 2 ;;
 esac

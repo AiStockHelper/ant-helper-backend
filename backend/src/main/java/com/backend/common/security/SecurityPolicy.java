@@ -40,6 +40,11 @@ public class SecurityPolicy {
 	}
 
 	public static boolean isHardened(Environment env) {
+		// 환경변수 ANT_HARDENED 로 프로필과 상관없이 강제할 수 있다. 배포 스크립트가 서버의 app.env 에 true 로 넣어 둔다.
+		String forced = env.getProperty("ANT_HARDENED");
+		if (forced != null && !forced.isBlank()) {
+			return Boolean.parseBoolean(forced.trim());
+		}
 		return Arrays.stream(env.getActiveProfiles()).noneMatch(p -> {
 			String s = p.toLowerCase();
 			return s.contains("local") || s.contains("dev") || s.contains("test");

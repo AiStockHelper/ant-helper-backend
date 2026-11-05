@@ -1,0 +1,128 @@
+name: Server ops (manual)
+
+# 서버를 직접 만지는 일회성 작업을 사람이 눌러서 실행한다. push 로는 실행되지 않는다.
+#  - status      : 서버 상태를 요약해서 보여준다(비밀 값은 출력하지 않는다).
+#  - elastic-ip  : 탄력적 IP 를 만들어 서버에 붙이고 보안그룹에 443 을 연다. 끝나면 새 IP 를 출력한다.
+#  - https       : nginx 에 Let's Encrypt 인증서를 붙이고 HTTP -> HTTPS 리다이렉트와 보안 헤더를 적용한다.
+# 이 저장소는 공개 저장소라 로그도 공개된다. 스크립트는 비밀·내부 구조를 출력하지 않도록 작성한다.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "실행할 작업"
+        required: true
+        type: choice
+        options: [status, elastic-ip, https]
+      domain:
+        description: "https 작업의 도메인 (비우면 EC2_HOST 를 sslip.io 주소로 바꿔 사용)"
+        required: false
+        default: ""
+      email:
+        description: "Let's Encrypt 만료 알림을 받을 이메일"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ops:
+    name: ${{ inputs.task }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      EC2_HOST: ${{ vars.EC2_HOST }}
+      EC2_USER: ${{ vars.EC2_USER }}
+      EC2_SG_ID: ${{ vars.EC2_SG_ID }}
+      EC2_HOST_KEY: ${{ vars.EC2_HOST_KEY }}
+      EC2_KEY: ${{ secrets.EC2_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ───────────── 탄력적 IP (AWS API 만 사용, SSH 없음) ─────────────
+      - name: Attach Elastic IP and open 443
+        if: inputs.task == 'elastic-ip'
+        run: |
+          set -euo pipefail
+          instance_id="$(aws ec2 describe-instances --filters "Name=ip-address,Values=${EC2_HOST}" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)"
+          echo "instance: $instance_id"
+          existing="$(aws ec2 describe-addresses --filters "Name=instance-id,Values=${instance_id}" \
+            --query 'Addresses[0].PublicIp' --output text 2>/dev/null || true)"
+          if [ -n "$existing" ] && [ "$existing" != "None" ]; then
+            echo "already has an Elastic IP: $existing"; new_ip="$existing"
+          else
+            alloc="$(aws ec2 allocate-address --domain vpc --tag-specifications 'ResourceType=elastic-ip,Tags=[{Key=Name,Value=antlab}]' \
+              --query AllocationId --output text)"
+            aws ec2 associate-address --instance-id "$instance_id" --allocation-id "$alloc" >/dev/null
+            new_ip="$(aws ec2 describe-addresses --allocation-ids "$alloc" --query 'Addresses[0].PublicIp' --output text)"
+          fi
+          for port in 443; do
+            aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=${port},ToPort=${port},IpRanges=[{CidrIp=0.0.0.0/0,Description=https}]" 2>&1 \
+              | grep -v 'InvalidPermission.Duplicate' || true
+          done
+          echo "::notice::NEW_PUBLIC_IP=${new_ip}"
+          echo "NEW_PUBLIC_IP=${new_ip}" >> "$GITHUB_STEP_SUMMARY"
+
+      # ───────────── SSH 가 필요한 작업 ─────────────
+      - name: Prepare SSH
+        if: inputs.task != 'elastic-ip'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          printf '%s %s\n' "$EC2_HOST" "$EC2_HOST_KEY" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host ec2
+            HostName $EC2_HOST
+            User $EC2_USER
+            IdentityFile ~/.ssh/ec2_key
+            IdentitiesOnly yes
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 12
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Open SSH for this runner
+        id: sg
+        if: inputs.task != 'elastic-ip'
+        run: |
+          ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
+          if ! out="$(aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${ip}/32,Description=gha-ops-${GITHUB_RUN_ID}}]" 2>&1)"; then
+            echo "$out"; grep -q 'InvalidPermission.Duplicate' <<< "$out" || exit 1
+          fi
+          for i in $(seq 1 12); do ssh ec2 true && exit 0; sleep 5; done
+          echo "::error::cannot reach EC2 over SSH"; exit 1
+
+      - name: Run server script
+        if: inputs.task != 'elastic-ip'
+        env:
+          TASK: ${{ inputs.task }}
+          DOMAIN: ${{ inputs.domain }}
+          EMAIL: ${{ inputs.email }}
+        run: |
+          ssh ec2 "TASK='${TASK}' DOMAIN='${DOMAIN}' EMAIL='${EMAIL}' HOST_IP='${EC2_HOST}' bash -s" < .github/scripts/server-ops.sh
+
+      - name: Close SSH for this runner
+        if: always() && steps.sg.outputs.ip != ''
+        run: |
+          aws ec2 revoke-security-group-ingress --group-id "$EC2_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${{ steps.sg.outputs.ip }}/32}]" >/dev/null || true
+          rm -f ~/.ssh/ec2_key

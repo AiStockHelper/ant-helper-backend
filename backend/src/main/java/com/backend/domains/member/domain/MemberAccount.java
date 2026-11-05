@@ -1,5 +1,6 @@
 package com.backend.domains.member.domain;
 
+import com.backend.common.crypto.CryptoService;
 import com.backend.common.util.encoder.EncryptUtil;
 import com.backend.order.kis.enums.AccountType;
 
@@ -153,10 +154,26 @@ public class MemberAccount {
 	}
 
 	public String getDecryptedAppKey() {
-		return EncryptUtil.decrypt(appKey, EncryptUtil.stringToKey(appKeySalt));
+		return decryptField(appKey, appKeySalt);
 	}
 
 	public String getDecryptedSecretKey() {
-		return EncryptUtil.decrypt(secretKey, EncryptUtil.stringToKey(secretKeySalt));
+		return decryptField(secretKey, secretKeySalt);
+	}
+
+	private static String decryptField(String stored, String legacyKey) {
+		if (CryptoService.isV2(stored)) {
+			return CryptoService.get().decrypt(stored);
+		}
+		// 마이그레이션 전에 저장된 값(AES-ECB, 키가 같은 행에 있음)
+		return EncryptUtil.decrypt(stored, EncryptUtil.stringToKey(legacyKey));
+	}
+
+	/** 새 방식(AES-GCM)으로 암호화한 값으로 교체하고 옛 키 컬럼은 비운다. */
+	public void replaceSecrets(String encryptedAppKey, String encryptedSecretKey) {
+		this.appKey = encryptedAppKey;
+		this.secretKey = encryptedSecretKey;
+		this.appKeySalt = "v2";
+		this.secretKeySalt = "v2";
 	}
 }

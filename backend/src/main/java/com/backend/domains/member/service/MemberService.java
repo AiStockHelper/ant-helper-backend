@@ -1,14 +1,11 @@
 package com.backend.domains.member.service;
 
-import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.domains.member.domain.LogoutToken;
-import com.backend.domains.member.repository.LogoutRepository;
 import com.backend.domains.member.repository.MemberRepository;
 import com.backend.domains.member.repository.RefreshTokenRepository;
 
@@ -26,7 +23,6 @@ public class MemberService {
 
 	// 회원 인증 관련
 	private final RefreshTokenRepository refreshTokenRepository;
-	private final LogoutRepository logoutRepository;
 
 	// 이메일 중복 조회
 	public void validateDuplicatedEmail(String email) {
@@ -36,13 +32,9 @@ public class MemberService {
 		}
 	}
 
-	//로그아웃
+	/** 로그아웃: 이 회원의 리프레시 토큰을 모두 지운다(액세스 토큰 폐기는 호출한 쪽이 한다). */
 	@Transactional
-	public void logoutMember(final Long memberId, String accessToken) {
-		// 회원의 refreshToken 삭제
+	public void logoutMember(final Long memberId) {
 		refreshTokenRepository.deleteByMemberId(memberId);
-
-		// 같은 accessToken으로 다시 로그인하지 못하도록 블랙리스트에 저장
-		logoutRepository.save(new LogoutToken(UUID.randomUUID().toString(), accessToken));
 	}
 }

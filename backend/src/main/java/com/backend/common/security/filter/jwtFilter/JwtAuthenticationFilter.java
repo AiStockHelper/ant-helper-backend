@@ -3,7 +3,6 @@ package com.backend.common.security.filter.jwtFilter;
 import static com.backend.common.exception.ErrorCode.*;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -17,8 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.common.properties.SecurityProperties;
-import com.backend.domains.member.repository.MemberRepository;
+import com.backend.common.security.SecurityPolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,64 +25,40 @@ import lombok.extern.slf4j.Slf4j;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 	private final JwtTokenProvider jwtTokenProvider;
-
-	private final MemberRepository memberRepository;
-
-	private final SecurityProperties securityProperties;
+	private final SecurityPolicy policy;
 	private final AntPathMatcher pathMatcher;
 
 	@Override
-	protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+	protected boolean shouldNotFilter(HttpServletRequest request) {
 		String path = request.getRequestURI();
-
-		boolean result = Arrays.stream(securityProperties.getPermitUrls())
-			.anyMatch(permitUrl -> pathMatcher.match(permitUrl, path));
-
-		log.debug("JwtAuthenticationFilter.shouldNotFilter({}) : {}", path, result);
-
-		return result;
+		return policy.permitUrls().stream().anyMatch(permitUrl -> pathMatcher.match(permitUrl, path));
 	}
 
+	/**
+	 * 인증은 액세스 토큰 하나로만 한다. 리프레시 토큰은 이 필터가 보지 않고 /api/auth/refresh 에서만 쓴다
+	 * (아무 요청에나 리프레시 헤더를 붙이면 토큰이 재발급되던 방식은 제거했다).
+	 */
 	@Override
-	protected void doFilterInternal(
-		HttpServletRequest request,
-		HttpServletResponse response,
-		FilterChain filterChain) throws ServletException, IOException, ApiException {
-
-		final String refreshToken = jwtTokenProvider.extractRefreshToken(request).orElse(null);
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+		throws ServletException, IOException, ApiException {
 		final String accessToken = jwtTokenProvider.extractAccessToken(request).orElse(null);
-
-		//1. refresh토큰이 존재하며, refreshToken이 유효하면 access 토큰 재발급
-		//2. refresh토큰이 존재하며, refreshToken이 유효하지 않으면 로그인 유도
-		//3. access토큰이 존재하며, accessToken이 유효하면 인증
-		//4. access토큰이 존재하며, accesToken이 유효하지 않으면 에러 리턴
-		//5. 그 외 모든 경우는 에러 리턴
-		if (refreshToken != null && jwtTokenProvider.isTokenValid(refreshToken)) {
-			log.info("refresh토큰 인증 성공");
-			jwtTokenProvider.checkRefreshTokenAndReIssueAccessAndRefreshToken(response, refreshToken);
-		} else if (refreshToken != null && !jwtTokenProvider.isTokenValid(refreshToken)) {
-			log.warn("refresh토큰 인증 실패: {} {}", request.getMethod(), request.getRequestURI());
-			throw ApiException.from(INVALID_REFRESH_TOKEN);
-		} else if (accessToken != null && jwtTokenProvider.isTokenValid(accessToken)) {
-
-			//토큰이 logout된 토큰인지 검사
-			if (jwtTokenProvider.isLogout(accessToken)) {
-				log.warn("logout된 accessToken으로 인증 실패: {} {}", request.getMethod(), request.getRequestURI());
-				throw ApiException.from(INVALID_ACCESS_TOKEN);
-			}
-
-			Authentication authentication = jwtTokenProvider.getAuthentication(accessToken);
-			saveAuthentication(authentication);
-			org.slf4j.MDC.put("memberId", String.valueOf(authentication.getPrincipal()));
-			log.debug("access토큰 인증 성공: memberId={}", authentication.getPrincipal());
-			filterChain.doFilter(request, response);
-		} else if (accessToken != null && !jwtTokenProvider.isTokenValid(accessToken)) {
-			log.warn("access토큰 만료/무효: {} {}", request.getMethod(), request.getRequestURI());
-			throw ApiException.from(REISSUE_ACCESS_TOKEN);
-		} else {
+		if (accessToken == null) {
 			log.warn("인증 정보 없음: {} {}", request.getMethod(), request.getRequestURI());
 			throw ApiException.from(ErrorCode.UNAUTHORIZED);
 		}
+		Long memberId = jwtTokenProvider.validAccessMemberId(accessToken).orElse(null);
+		if (memberId == null) {
+			log.warn("access토큰 만료/무효: {} {}", request.getMethod(), request.getRequestURI());
+			throw ApiException.from(ErrorCode.REISSUE_ACCESS_TOKEN);
+		}
+		if (jwtTokenProvider.isLogout(accessToken)) {
+			log.warn("logout된 accessToken으로 인증 실패: {} {}", request.getMethod(), request.getRequestURI());
+			throw ApiException.from(ErrorCode.INVALID_ACCESS_TOKEN);
+		}
+		Authentication authentication = jwtTokenProvider.getAuthentication(memberId);
+		saveAuthentication(authentication);
+		org.slf4j.MDC.put("memberId", String.valueOf(memberId));
+		filterChain.doFilter(request, response);
 	}
 
 	private void saveAuthentication(Authentication authentication) {

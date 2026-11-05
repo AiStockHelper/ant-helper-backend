@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.backend.common.dto.DataResponse;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
 import com.backend.domains.auth.dto.AuthDtos.AuthTokens;
+import com.backend.domains.auth.dto.AuthDtos.LoginChallenge;
+import com.backend.domains.auth.dto.AuthDtos.StepUpChallenge;
+import com.backend.domains.auth.dto.AuthDtos.StepUpVerifyRequest;
+import com.backend.domains.auth.dto.AuthDtos.VerifyLoginRequest;
+import com.backend.domains.auth.otp.OtpService.Issued;
+import com.backend.domains.auth.otp.StepUpService;
 import com.backend.domains.auth.dto.AuthDtos.LoginRequest;
 import com.backend.domains.auth.dto.AuthDtos.Me;
 import com.backend.domains.auth.dto.AuthDtos.RefreshRequest;
@@ -35,6 +41,7 @@ public class AuthController {
 	private final AuthService authService;
 	private final MemberService memberService;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final StepUpService stepUp;
 
 	@PostMapping("/signup")
 	public ResponseEntity<DataResponse<Me>> signup(@RequestBody @Valid SignupRequest request) {
@@ -42,22 +49,43 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public ResponseEntity<DataResponse<AuthTokens>> login(@RequestBody @Valid LoginRequest request) {
-		return ResponseEntity.ok(DataResponse.from(authService.login(request)));
+	public ResponseEntity<DataResponse<LoginChallenge>> login(@RequestBody @Valid LoginRequest request, HttpServletRequest http) {
+		return ResponseEntity.ok(DataResponse.from(authService.login(request, http.getRemoteAddr())));
+	}
+
+	@PostMapping("/login/verify")
+	public ResponseEntity<DataResponse<AuthTokens>> verifyLogin(@RequestBody @Valid VerifyLoginRequest request,
+		HttpServletRequest http) {
+		return ResponseEntity.ok(DataResponse.from(authService.verifyLogin(request, http.getRemoteAddr())));
 	}
 
 	@PostMapping("/refresh")
-	public ResponseEntity<DataResponse<AuthTokens>> refresh(@RequestBody @Valid RefreshRequest request) {
-		return ResponseEntity.ok(DataResponse.from(authService.refresh(request.refreshToken())));
+	public ResponseEntity<DataResponse<AuthTokens>> refresh(@RequestBody @Valid RefreshRequest request, HttpServletRequest http) {
+		return ResponseEntity.ok(DataResponse.from(authService.refresh(request.refreshToken(), http.getRemoteAddr())));
 	}
 
 	@PostMapping("/logout")
 	public ResponseEntity<DataResponse<Void>> logout(@AuthenticationPrincipal Long memberId, HttpServletRequest request) {
 		String accessToken = jwtTokenProvider.extractAccessToken(request).orElse(null);
-		authService.logout(memberId, accessToken);
+		authService.logout(memberId, accessToken, request.getRemoteAddr());
 		return ResponseEntity.ok(DataResponse.ok());
 	}
 
+	/** 실계좌 보호: 민감한 작업 전에 이메일 인증번호를 요청한다. */
+	@PostMapping("/step-up/request")
+	public ResponseEntity<DataResponse<StepUpChallenge>> stepUpRequest(@AuthenticationPrincipal Long memberId,
+		HttpServletRequest http) {
+		Issued i = stepUp.request(memberId, http.getRemoteAddr());
+		return ResponseEntity.ok(DataResponse.from(
+			new StepUpChallenge(i.challengeId(), i.expiresInSeconds(), i.resendAfterSeconds(), stepUp.validMinutes())));
+	}
+
+	@PostMapping("/step-up/verify")
+	public ResponseEntity<DataResponse<Void>> stepUpVerify(@AuthenticationPrincipal Long memberId,
+		@RequestBody @Valid StepUpVerifyRequest request, HttpServletRequest http) {
+		stepUp.verify(memberId, request.challengeId(), request.code(), http.getRemoteAddr());
+		return ResponseEntity.ok(DataResponse.ok());
+	}
 	@GetMapping("/me")
 	public ResponseEntity<DataResponse<Me>> me(@AuthenticationPrincipal Long memberId) {
 		return ResponseEntity.ok(DataResponse.from(authService.me(memberId)));

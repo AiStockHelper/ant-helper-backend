@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP=/opt/antlab/ant-backend
 SERVICE=ant-backend
-HEALTH_URL="http://127.0.0.1:8080/api-docs"   # 인증 없이 열려 있는 엔드포인트
+HEALTH_URL="http://127.0.0.1:8080/api/health"   # 인증 없이 열려 있는 기동 확인용 엔드포인트
 
 [ -f "$APP/app.jar.new" ] || { echo "!! $APP/app.jar.new not found"; exit 2; }
 ls "$APP"/config/application*.yml >/dev/null 2>&1 || { echo "!! $APP/config/application*.yml missing (runtime config)"; exit 2; }

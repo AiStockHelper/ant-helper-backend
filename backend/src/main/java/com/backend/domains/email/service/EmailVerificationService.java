@@ -28,6 +28,8 @@ public class EmailVerificationService {
 	private final MemberService memberService;
 	private final SignupPolicy signupPolicy;
 	private final EmailUtil emailUtil;
+	private final com.backend.common.security.guard.AttemptGuard guard;
+	private final com.backend.common.properties.AppProperties props;
 
 	private static final String EMAIL_TITLE = "ANT HELPER 이메일 인증 코드";
 	private static final String EMAIL_TEXT = "인증 코드는 %d 입니다.";
@@ -38,6 +40,8 @@ public class EmailVerificationService {
 		String email = request.getEmail();
 
 		signupPolicy.requireAllowed(email);
+		guard.assertOpen("emailsend:" + email);
+		guard.fail("emailsend:" + email, props.getSecurity().getMaxOtpSends());
 		memberService.validateDuplicatedEmail(email);
 
 		// 본문
@@ -56,6 +60,7 @@ public class EmailVerificationService {
 	public VerifyEmailCodeResponse verifyEmailCode(VerifyEmailCodeRequest request) {
 		String email = request.getEmail();
 		Integer requestCode = request.getCode();
+		guard.assertOpen("emailverify:" + email);
 
 		// 이메일로 인증 코드 검색
 		EmailCode emailCode = emailCodeRepository.findByEmail(email)
@@ -63,9 +68,12 @@ public class EmailVerificationService {
 
 		// 인증 코드 비교 후 인증된 이메일 저장
 		if (!Objects.equals(emailCode.getCode(), requestCode)) {
+			guard.fail("emailverify:" + email, props.getSecurity().getMaxLoginFailures());
 			throw ApiException.from(ErrorCode.INVALID_EMAIL_CODE);
 		}
 
+		guard.reset("emailverify:" + email);
+		guard.reset("emailsend:" + email);
 		// 토큰 발급
 		String token = UUID.randomUUID().toString();
 		emailTokenService.saveEmailToken(token);
@@ -74,7 +82,7 @@ public class EmailVerificationService {
 
 	// 인증 코드 생성
 	private Integer createVerificationCode() {
-		Random random = new Random();
+		java.security.SecureRandom random = new java.security.SecureRandom();
 
 		return random.nextInt(900000) + 100000; // 100000부터 999999까지의 숫자 생성
 	}

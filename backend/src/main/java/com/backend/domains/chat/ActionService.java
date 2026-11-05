@@ -37,6 +37,7 @@ import com.backend.market.MarketDataService;
 import com.backend.market.dto.MarketDtos.OrderOutcome;
 import com.backend.market.dto.MarketDtos.OrderRequest;
 import com.backend.market.TradingService;
+import com.backend.market.queue.OrderSource;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import lombok.RequiredArgsConstructor;
@@ -161,7 +162,7 @@ public class ActionService {
 			MemberAccount account = accountService.requireOwned(memberId, a.getAccountId());
 			Map<String, Object> payload = json.read(a.getPayloadJson(), new TypeReference<Map<String, Object>>() {}, Map.of());
 			result = switch (a.getKind()) {
-				case ORDER -> executeOrder(account, payload);
+				case ORDER -> executeOrder(account, a, payload);
 				case AGENT_TASK -> registerAgentTask(account, a, payload);
 				case SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY -> new ActionResult(false,
 					"이 방식의 예약은 더 이상 지원하지 않습니다. 같은 내용을 다시 요청해 주세요.", null);
@@ -193,7 +194,7 @@ public class ActionService {
 		});
 	}
 
-	private ActionResult executeOrder(MemberAccount account, Map<String, Object> p) {
+	private ActionResult executeOrder(MemberAccount account, ChatAction action, Map<String, Object> p) {
 		Market market = Market.parse(String.valueOf(p.get("market")));
 		String symbol = String.valueOf(p.get("productNumber"));
 		String side = String.valueOf(p.get("side"));
@@ -207,7 +208,10 @@ public class ActionService {
 		planner.enforceLimits(account, plan);
 		planner.requireMarketOpen(market);
 
-		OrderOutcome out = tradingService.placeOrder(account, new OrderRequest(market, symbol, side, qty, limit));
+		OrderOutcome out = planner.execute(account, plan, OrderSource.chat(action.getId(), action.getConversationId()));
+		if (out.pending()) {
+			return new ActionResult(true, out.message(), null);
+		}
 		return new ActionResult(out.success(), out.success()
 			? plan.name() + " " + qty + "주 " + plan.sideLabel() + " 주문이 접수되었습니다." + (out.orderNo() != null ? " (주문번호 " + out.orderNo() + ")" : "")
 			: "주문이 거절되었습니다: " + out.message(), out.orderNo());

@@ -81,10 +81,22 @@ public final class MarketDtos {
 	public record OrderRequest(Market market, String productNumber, String side, long quantity, BigDecimal limitPrice) {
 	}
 
+	/**
+	 * pending 이 true 면 아직 KIS 에 접수되지 않았지만 대기열에 등록되어 자동으로 다시 시도 중이라는 뜻이다
+	 * (이때 success 는 false). 결과는 주문 큐 화면에서 확인한다.
+	 */
 	public record OrderOutcome(
 		boolean success, String message, String orderNo,
 		String side, String productNumber, String name, Market market, Currency currency,
-		long quantity, BigDecimal price
+		long quantity, BigDecimal price, boolean pending
 	) {
+		public OrderOutcome(boolean success, String message, String orderNo, String side, String productNumber, String name,
+			Market market, Currency currency, long quantity, BigDecimal price) {
+			this(success, message, orderNo, side, productNumber, name, market, currency, quantity, price, false);
+		}
+
+		public OrderOutcome asPending(String newMessage) {
+			return new OrderOutcome(false, newMessage, orderNo, side, productNumber, name, market, currency, quantity, price, true);
+		}
 	}
 }

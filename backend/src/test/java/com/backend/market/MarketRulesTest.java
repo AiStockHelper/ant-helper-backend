@@ -47,8 +47,8 @@ class MarketRulesTest {
 
 	@Test
 	void currencyFormatsForHumans() {
-		assertThat(Currency.KRW.format(new BigDecimal("71200"))).isEqualTo("₩71,200");
-		assertThat(Currency.USD.format(new BigDecimal("189.5"))).isEqualTo("$189.50");
+		assertThat(Currency.KRW.format(new BigDecimal("71200"))).isEqualTo("71,200원");
+		assertThat(Currency.USD.format(new BigDecimal("189.5"))).isEqualTo("189.50달러");
 		assertThat(Currency.USD.round(new BigDecimal("1.005"))).isEqualByComparingTo("1.01");
 	}
 

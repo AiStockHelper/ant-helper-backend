@@ -28,10 +28,10 @@ public enum Currency {
 		return value.setScale(scale, RoundingMode.HALF_UP);
 	}
 
-	/** 사람이 읽는 금액 표기: ₩71,200 / $189.50 */
+	/** 사용자에게 보여줄 금액 표시. 원화와 달러가 헷갈리지 않도록 단위를 뒤에 붙인다: 71,200원 / 189.50달러 */
 	public String format(BigDecimal value) {
 		BigDecimal v = round(value);
 		String number = String.format("%,." + scale + "f", v);
-		return (this == KRW ? "₩" : "$") + number;
+		return number + koreanName;
 	}
 }

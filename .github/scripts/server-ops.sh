@@ -66,9 +66,10 @@ check() {
   echo "account key migration:"
   sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep -oE '계좌 키 암호화 마이그레이션: 변환 [0-9]+건, 실패 [0-9]+건' | tail -1 || echo "  (none: nothing to migrate, or already migrated)"
   echo "crypto key present: $(sudo grep -c '^ANT_CRYPTO_KEY=' /opt/antlab/ant-backend/app.env || true)"
-  echo "hardened flag: [$(sudo grep -E '^ANT_HARDENED=' /opt/antlab/ant-backend/app.env | cut -d= -f2 | tr -d '\r\n' | od -c | head -1)]"
+  echo "app.env TZ / profile / hardened:"
+  sudo grep -E '^(TZ|SPRING_PROFILES_ACTIVE|ANT_HARDENED)' /opt/antlab/ant-backend/app.env | cut -c1-80 || true
   echo "ERROR loggers (count logger):"
-  sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep ' ERROR ' | sed -E 's/.*ERROR [^ ]* *(\x1b\[[0-9;]*m)?([A-Za-z0-9_.$]+).*/\2/' | sort | uniq -c | sort -rn | head -6
+  sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep ' ERROR ' | sed -E 's/\x1b\[[0-9;]*m//g; s/.* ERROR \[[^]]*\] //; s/ - .*//' | cut -c1-70 | sort | uniq -c | sort -rn | head -6
   section "prediction"
   printf 'service: %s  health: %s\n' "$(systemctl is-active ant-prediction)" "$(curl -s -m 5 http://127.0.0.1:8000/health || echo down)"
   section "nginx"

@@ -44,7 +44,7 @@ jobs:
       EC2_HOST_KEY: ${{ vars.EC2_HOST_KEY }}
       EC2_KEY: ${{ secrets.EC2_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4

@@ -90,6 +90,13 @@ jobs:
           echo "NEW_PUBLIC_IP=${new_ip}" >> "$GITHUB_STEP_SUMMARY"
 
       # ───────────── SSH 가 필요한 작업 ─────────────
+      - name: Open 443 (HTTPS)
+        if: inputs.task == 'https'
+        run: |
+          out="$(aws ec2 authorize-security-group-ingress --group-id "$EC2_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description=https}]" 2>&1)" || {
+            echo "$out" | grep -q 'InvalidPermission.Duplicate' || { echo "$out"; exit 1; }; }
+          echo "443 is open"
       - name: Prepare SSH
         if: inputs.task == 'status' || inputs.task == 'https'
         run: |

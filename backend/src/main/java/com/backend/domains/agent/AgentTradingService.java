@@ -18,6 +18,7 @@ import com.backend.common.exception.ErrorCode;
 import com.backend.common.util.Json;
 import com.backend.domains.member.domain.MemberAccount;
 import com.backend.domains.trade.TradePlanner;
+import com.backend.market.queue.OrderSource;
 import com.backend.domains.trade.TradePlanner.Plan;
 import com.backend.market.Currency;
 import com.backend.market.Market;
@@ -102,7 +103,7 @@ public class AgentTradingService {
 		Limits lim = limitsOf(task);
 		if (lim == null) {
 			requirePaper(account);
-			return planner.execute(account, plan);
+			return planner.execute(account, plan, OrderSource.agent(task.getId(), task.getConversationId(), reason));
 		}
 		ReentrantLock lock = lock(ledgerOf(task));
 		lock.lock();
@@ -136,7 +137,7 @@ public class AgentTradingService {
 			planner.enforceLimits(account, plan);
 			planner.requireMarketOpen(plan.market());
 
-			OrderOutcome out = planner.execute(account, plan);
+			OrderOutcome out = planner.execute(account, plan, OrderSource.agent(task.getId(), task.getConversationId(), reason));
 			if (out.success()) {
 				BigDecimal price = priceOf(plan);
 				tx.executeWithoutResult(s -> {
@@ -163,7 +164,7 @@ public class AgentTradingService {
 		Limits lim = limitsOf(task);
 		if (lim == null) {
 			requirePaper(account);
-			return planner.execute(account, plan);
+			return planner.execute(account, plan, OrderSource.agent(task.getId(), task.getConversationId(), reason));
 		}
 		ReentrantLock lock = lock(ledgerOf(task));
 		lock.lock();
@@ -176,7 +177,7 @@ public class AgentTradingService {
 					+ "주)보다 많이 매도할 수 없습니다.");
 			}
 			planner.requireMarketOpen(plan.market());
-			OrderOutcome out = planner.execute(account, plan);
+			OrderOutcome out = planner.execute(account, plan, OrderSource.agent(task.getId(), task.getConversationId(), reason));
 			if (out.success()) {
 				BigDecimal price = priceOf(plan);
 				Long posId = pos.getId();

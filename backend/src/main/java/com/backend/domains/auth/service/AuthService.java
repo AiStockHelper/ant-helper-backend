@@ -69,6 +69,7 @@ public class AuthService {
 	private final SecurityAudit audit;
 	private final SecurityEventRepository securityEvents;
 	private final EmailUtil mail;
+	private final com.backend.market.queue.KisOrderRequestRepository orderRequests;
 
 	@Transactional
 	public Me signup(SignupRequest request) {
@@ -215,6 +216,7 @@ public class AuthService {
 		chatService.deleteAll(memberId);
 		agentTasks.deleteAllForMember(memberId);
 		accountRepository.findAllByMemberId(memberId).forEach(a -> kisGateway.evict(a.getId()));
+		orderRequests.deleteAllByMemberId(memberId);
 		accountRepository.deleteAllByMemberId(memberId);
 		refreshTokenRepository.deleteByMemberId(memberId);
 		memberRepository.deleteById(memberId);

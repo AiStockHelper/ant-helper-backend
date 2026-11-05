@@ -133,6 +133,8 @@ public class AppProperties {
 		private long dailyBuyCapKrw = 3_000_000L;
 		private long dailyBuyCapUsd = 2_000L;
 		private int dailyOrderCountCap = 20;
+		/** true 면 KIS 가 내용을 보고 거절한 주문(잔고 부족 등)도 일시 오류처럼 최대 횟수까지 다시 보낸다. 보통은 false. */
+		private boolean retryRejectedOrders = false;
 		/** 개발/테스트 전용. true 이면 장 운영 시간 검사를 건너뛴다. 운영에서는 반드시 false. */
 		private boolean skipMarketHoursCheck = false;
 	}

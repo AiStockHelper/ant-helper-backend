@@ -358,10 +358,10 @@ public class ChatTools {
 			return placeAgentOrder(s, account, plan);
 		}
 		if (account.isPaper()) {
-			OrderOutcome out = planner.execute(account, plan);
+			OrderOutcome out = planner.execute(account, plan, com.backend.market.queue.OrderSource.chat(null, s.conversationId()));
 			s.card("order_result", OrderCards.orderResult(out));
 			s.summary(out.success() ? plan.name() + " " + plan.quantity() + "주 " + plan.sideLabel() + " 접수" : "주문 실패");
-			return map("status", out.success() ? "SUBMITTED" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
+			return map("status", out.success() ? "SUBMITTED" : out.pending() ? "QUEUED_FOR_RETRY" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
 				"name", plan.name(), "side", plan.side(), "quantity", plan.quantity(), "currency", plan.currency(),
 				"orderType", plan.orderTypeLabel(), "price", plan.limitPrice() != null ? plan.limitPrice() : plan.refPrice(),
 				"account", "모의 계좌");
@@ -391,7 +391,7 @@ public class ChatTools {
 		}
 		s.card("order_result", OrderCards.orderResult(out));
 		s.summary(out.success() ? plan.name() + " " + plan.quantity() + "주 " + plan.sideLabel() + " 접수" : "주문 실패");
-		return map("status", out.success() ? "SUBMITTED" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
+		return map("status", out.success() ? "SUBMITTED" : out.pending() ? "QUEUED_FOR_RETRY" : "REJECTED", "message", out.message(), "orderNo", out.orderNo(),
 			"name", plan.name(), "side", plan.side(), "quantity", plan.quantity(), "currency", plan.currency(),
 			"orderType", plan.orderTypeLabel(), "price", plan.limitPrice() != null ? plan.limitPrice() : plan.refPrice());
 	}

@@ -104,7 +104,7 @@ class LoginFlowTest {
 		SecurityAudit audit = mock(SecurityAudit.class);
 
 		auth = new AuthService(members, null, authManager, jwt, jwtProps, refreshTokens, null, null, props,
-			mock(SignupPolicy.class), null, null, null, null, otp, guard, store, audit, events, mail);
+			mock(SignupPolicy.class), null, null, null, null, otp, guard, store, audit, events, mail, null);
 	}
 
 	private String sentCode() {

@@ -56,6 +56,25 @@ status() {
   free -m | awk 'NR==2{print "mem used/total MB: " $3 "/" $2}'
 }
 
+# 배포 직후 점검. 공개 로그이므로 로그 내용은 출력하지 않고 개수와 결과만 보여준다.
+check() {
+  section "backend"
+  printf 'service: %s\n' "$(systemctl is-active ant-backend)"
+  printf 'health: %s\n' "$(curl -s -m 5 http://127.0.0.1:8080/api/health || echo down)"
+  since="30 min ago"
+  printf 'ERROR lines (last 30 min): %s\n' "$(sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep -c ' ERROR ' || true)"
+  echo "account key migration:"
+  sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep -oE '계좌 키 암호화 마이그레이션: 변환 [0-9]+건, 실패 [0-9]+건' | tail -1 || echo "  (none: nothing to migrate, or already migrated)"
+  echo "crypto key present: $(sudo grep -c '^ANT_CRYPTO_KEY=' /opt/antlab/ant-backend/app.env)  hardened flag: $(sudo grep -c '^ANT_HARDENED=true' /opt/antlab/ant-backend/app.env)"
+  section "prediction"
+  printf 'service: %s  health: %s\n' "$(systemctl is-active ant-prediction)" "$(curl -s -m 5 http://127.0.0.1:8000/health || echo down)"
+  section "nginx"
+  printf 'service: %s\n' "$(systemctl is-active nginx)"
+  sudo nginx -t 2>&1 | tail -1
+  section "certificate"
+  sudo ls /etc/letsencrypt/live 2>/dev/null | tr '\n' ' '; echo
+  sudo systemctl list-timers certbot-renew.timer --no-pager 2>/dev/null | head -3
+}
 install_certbot() {
   if command -v certbot >/dev/null 2>&1; then return 0; fi
   echo ">> installing certbot (python venv)"
@@ -205,6 +224,7 @@ https() {
 }
 case "$TASK" in
   status) status ;;
+  check) check ;;
   https) https ;;
   *) echo "unknown task: $TASK"; exit 2 ;;
 esac

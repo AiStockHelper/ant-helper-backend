@@ -12,6 +12,19 @@ HEALTH_URL="http://127.0.0.1:8080/api/health"   # 인증 없이 열려 있는 �
 [ -f "$APP/app.jar.new" ] || { echo "!! $APP/app.jar.new not found"; exit 2; }
 ls "$APP"/config/application*.yml >/dev/null 2>&1 || { echo "!! $APP/config/application*.yml missing (runtime config)"; exit 2; }
 [ -f "$APP/app.env" ] || { echo "!! $APP/app.env missing"; exit 2; }
+# 보안 필수 설정을 서버에 보장한다. 값은 이 서버 안에서만 만들어지고 로그에는 이름만 남는다.
+#  - ANT_HARDENED : 어떤 프로필로 떠 있든 운영 보안 모드(Swagger 비활성, CORS https 한정 등)를 강제한다.
+#  - ANT_CRYPTO_KEY : 증권사 앱키·시크릿을 암호화하는 마스터 키(32바이트). 한 번 만들어진 뒤에는 절대 바꾸지 말 것.
+#    잃어버리면 저장된 계좌 키를 복호화할 수 없으므로 app.env 를 백업해 둔다.
+ensure_env() {
+  local name="$1" value="$2"
+  if sudo grep -q "^${name}=" "$APP/app.env"; then return 0; fi
+  printf '%s=%s\n' "$name" "$value" | sudo tee -a "$APP/app.env" >/dev/null
+  echo ">> app.env: ${name} added"
+}
+ensure_env ANT_HARDENED true
+ensure_env ANT_CRYPTO_KEY "$(openssl rand -base64 32)"
+sudo chmod 600 "$APP/app.env" || true
 
 wait_healthy() {
   local i code

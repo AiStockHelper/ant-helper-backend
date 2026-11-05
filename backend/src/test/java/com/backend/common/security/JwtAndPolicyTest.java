@@ -115,6 +115,19 @@ class JwtAndPolicyTest {
 	}
 
 	@Test
+	void hardenedFlagOverridesProfiles() {
+		MockEnvironment local = new MockEnvironment();
+		local.setActiveProfiles("local-env");
+		local.setProperty("ANT_HARDENED", "true");
+		assertThat(SecurityPolicy.isHardened(local)).isTrue();
+
+		MockEnvironment prod = new MockEnvironment();
+		prod.setActiveProfiles("prod-env");
+		prod.setProperty("ANT_HARDENED", "false");
+		assertThat(SecurityPolicy.isHardened(prod)).isFalse();
+	}
+
+	@Test
 	void localKeepsSwagger() {
 		SecurityPolicy local = policy("local-env", "common", "local");
 		assertThat(local.hardened()).isFalse();

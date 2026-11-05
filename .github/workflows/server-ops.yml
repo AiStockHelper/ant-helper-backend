@@ -13,7 +13,7 @@ on:
         description: "실행할 작업"
         required: true
         type: choice
-        options: [status, check, rds-snapshot, elastic-ip, https]
+        options: [status, check, smtp-check, rds-snapshot, elastic-ip, https]
       domain:
         description: "https 작업의 도메인 (비우면 EC2_HOST 를 sslip.io 주소로 바꿔 사용)"
         required: false
@@ -98,7 +98,7 @@ jobs:
             echo "$out" | grep -q 'InvalidPermission.Duplicate' || { echo "$out"; exit 1; }; }
           echo "443 is open"
       - name: Prepare SSH
-        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'https'
+        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'smtp-check' || inputs.task == 'https'
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
@@ -118,7 +118,7 @@ jobs:
 
       - name: Open SSH for this runner
         id: sg
-        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'https'
+        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'smtp-check' || inputs.task == 'https'
         run: |
           ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
@@ -130,7 +130,7 @@ jobs:
           echo "::error::cannot reach EC2 over SSH"; exit 1
 
       - name: Run server script
-        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'https'
+        if: inputs.task == 'status' || inputs.task == 'check' || inputs.task == 'smtp-check' || inputs.task == 'https'
         env:
           TASK: ${{ inputs.task }}
           DOMAIN: ${{ inputs.domain }}

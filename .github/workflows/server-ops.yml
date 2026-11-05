@@ -2,6 +2,7 @@ name: Server ops (manual)
 
 # 서버를 직접 만지는 일회성 작업을 사람이 눌러서 실행한다. push 로는 실행되지 않는다.
 #  - status      : 서버 상태를 요약해서 보여준다(비밀 값은 출력하지 않는다).
+#  - rds-snapshot: 데이터베이스(RDS) 수동 스냅샷을 만들고 완료될 때까지 기다린다. 큰 변경을 배포하기 전에 쓴다.
 #  - elastic-ip  : 탄력적 IP 를 만들어 서버에 붙이고 보안그룹에 443 을 연다. 끝나면 새 IP 를 출력한다.
 #  - https       : nginx 에 Let's Encrypt 인증서를 붙이고 HTTP -> HTTPS 리다이렉트와 보안 헤더를 적용한다.
 # 이 저장소는 공개 저장소라 로그도 공개된다. 스크립트는 비밀·내부 구조를 출력하지 않도록 작성한다.
@@ -12,7 +13,7 @@ on:
         description: "실행할 작업"
         required: true
         type: choice
-        options: [status, elastic-ip, https]
+        options: [status, rds-snapshot, elastic-ip, https]
       domain:
         description: "https 작업의 도메인 (비우면 EC2_HOST 를 sslip.io 주소로 바꿔 사용)"
         required: false
@@ -52,6 +53,16 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # ───────────── 데이터베이스 스냅샷 (AWS API 만 사용) ─────────────
+      - name: Take RDS snapshot
+        if: inputs.task == 'rds-snapshot'
+        run: |
+          set -euo pipefail
+          db="$(aws rds describe-db-instances --query 'DBInstances[0].DBInstanceIdentifier' --output text)"
+          snap="manual-$(date -u +%Y%m%d-%H%M)"
+          aws rds create-db-snapshot --db-instance-identifier "$db" --db-snapshot-identifier "$snap" --query 'DBSnapshot.Status' --output text
+          aws rds wait db-snapshot-available --db-snapshot-identifier "$snap"
+          echo "::notice::snapshot ready: ${snap}"
       # ───────────── 탄력적 IP (AWS API 만 사용, SSH 없음) ─────────────
       - name: Attach Elastic IP and open 443
         if: inputs.task == 'elastic-ip'
@@ -80,7 +91,7 @@ jobs:
 
       # ───────────── SSH 가 필요한 작업 ─────────────
       - name: Prepare SSH
-        if: inputs.task != 'elastic-ip'
+        if: inputs.task == 'status' || inputs.task == 'https'
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
@@ -100,7 +111,7 @@ jobs:
 
       - name: Open SSH for this runner
         id: sg
-        if: inputs.task != 'elastic-ip'
+        if: inputs.task == 'status' || inputs.task == 'https'
         run: |
           ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
@@ -112,7 +123,7 @@ jobs:
           echo "::error::cannot reach EC2 over SSH"; exit 1
 
       - name: Run server script
-        if: inputs.task != 'elastic-ip'
+        if: inputs.task == 'status' || inputs.task == 'https'
         env:
           TASK: ${{ inputs.task }}
           DOMAIN: ${{ inputs.domain }}

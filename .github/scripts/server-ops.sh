@@ -58,17 +58,110 @@ status() {
 
 install_certbot() {
   if command -v certbot >/dev/null 2>&1; then return 0; fi
-  echo ">> installing certbot"
-  if command -v dnf >/dev/null 2>&1 && sudo dnf install -y certbot python3-certbot-nginx >/dev/null 2>&1; then return 0; fi
-  if command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y >/dev/null && sudo apt-get install -y certbot python3-certbot-nginx >/dev/null && return 0
-  fi
-  echo ">> falling back to a pip-installed certbot"
-  sudo dnf install -y python3 python3-pip augeas-libs >/dev/null 2>&1 || true
+  echo ">> installing certbot (python venv)"
+  sudo dnf install -y python3 python3-pip >/dev/null 2>&1 || true
   sudo python3 -m venv /opt/certbot
   sudo /opt/certbot/bin/pip install --quiet --upgrade pip
-  sudo /opt/certbot/bin/pip install --quiet certbot certbot-nginx
+  sudo /opt/certbot/bin/pip install --quiet certbot
   sudo ln -sf /opt/certbot/bin/certbot /usr/local/bin/certbot
+  certbot --version
+}
+
+# 80/443 용 nginx 설정을 만든다. 기존 80 번 기본 서버(IP 접속)는 건드리지 않는다.
+write_nginx_conf() {
+  local domain="$1" conf="/etc/nginx/conf.d/ant-https.conf"
+  sudo tee "$conf" >/dev/null <<EOF
+# 이 파일은 server-ops(https) 작업이 만든다. 직접 고치지 말고 스크립트를 고쳐서 다시 실행한다.
+limit_req_zone \$binary_remote_addr zone=ant_auth:10m rate=10r/m;
+
+# 도메인으로 들어온 HTTP 는 HTTPS 로 보낸다. 인증서 갱신용 확인 경로만 예외.
+server {
+  listen 80;
+  server_name ${domain};
+  location /.well-known/acme-challenge/ { root /opt/antlab/ant-frontend; }
+  location / { return 301 https://\$host\$request_uri; }
+}
+
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${domain};
+
+  ssl_certificate     /etc/letsencrypt/live/${domain}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache shared:ANT_SSL:10m;
+  ssl_session_timeout 1d;
+  ssl_session_tickets off;
+
+  root /opt/antlab/ant-frontend;
+  index index.html;
+  client_max_body_size 10m;
+  server_tokens off;
+
+  # 로그인·가입·인증번호처럼 무차별 대입 대상이 되는 경로는 IP 당 분당 10건으로 제한한다(순간 20건까지 허용).
+  location ~ ^/api/(auth/(login|signup|refresh|step-up)|email/) {
+    limit_req zone=ant_auth burst=20 nodelay;
+    limit_req_status 429;
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Connection '';
+    proxy_read_timeout 60s;
+  }
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Connection '';
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+  }
+
+  # 정적 화면. 보안 헤더는 여기서 붙인다(API 응답의 헤더는 백엔드가 붙인다).
+  location / {
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    try_files \$uri \$uri/ /index.html;
+  }
+}
+EOF
+}
+
+install_renew_timer() {
+  sudo tee /etc/systemd/system/certbot-renew.service >/dev/null <<'EOF'
+[Unit]
+Description=Renew Let's Encrypt certificates
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+EOF
+  sudo tee /etc/systemd/system/certbot-renew.timer >/dev/null <<'EOF'
+[Unit]
+Description=Twice-daily certificate renewal check
+[Timer]
+OnCalendar=*-*-* 03,15:17:00
+RandomizedDelaySec=1800
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now certbot-renew.timer >/dev/null
+  echo ">> renewal timer enabled"
 }
 
 https() {
@@ -88,22 +181,28 @@ https() {
   install_certbot
   sudo nginx -t
 
-  # 설정 백업(되돌리기 용)
-  backup="/etc/nginx/backup-$(date +%Y%m%d%H%M%S)"
-  sudo mkdir -p "$backup" && sudo cp -a /etc/nginx/nginx.conf /etc/nginx/conf.d "$backup"/ 2>/dev/null || true
-  echo ">> nginx config backed up"
-
   email_args=(--register-unsafely-without-email)
   [ -n "$EMAIL" ] && email_args=(-m "$EMAIL")
-  sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos "${email_args[@]}" --redirect
+  sudo certbot certonly --webroot -w /opt/antlab/ant-frontend -d "$DOMAIN" --non-interactive --agree-tos "${email_args[@]}"
 
-  sudo nginx -t
+  conf=/etc/nginx/conf.d/ant-https.conf
+  [ -f "$conf" ] && sudo cp -a "$conf" "$conf.bak"
+  write_nginx_conf "$DOMAIN"
+  if ! sudo nginx -t; then
+    echo "!! nginx test failed, rolling back"
+    if [ -f "$conf.bak" ]; then sudo mv -f "$conf.bak" "$conf"; else sudo rm -f "$conf"; fi
+    sudo nginx -t && sudo systemctl reload nginx
+    exit 4
+  fi
   sudo systemctl reload nginx
-  echo ">> verifying"
-  curl -fsS -m 10 -o /dev/null -w 'https status: %{http_code}\n' "https://${DOMAIN}/" || echo "!! https check failed"
-  curl -sS -m 10 -o /dev/null -w 'http  status: %{http_code} -> %{redirect_url}\n' "http://${DOMAIN}/" || true
-}
+  install_renew_timer
 
+  echo ">> verifying"
+  curl -sS -m 10 -o /dev/null -w 'https status: %{http_code}\n' "https://${DOMAIN}/" || echo "!! https check failed"
+  curl -sS -m 10 -o /dev/null -w 'http  status: %{http_code} -> %{redirect_url}\n' "http://${DOMAIN}/" || true
+  curl -sS -m 10 -o /dev/null -w 'ip http status (unchanged): %{http_code}\n' "http://127.0.0.1/" || true
+  curl -sSI -m 10 "https://${DOMAIN}/" | grep -iE '^(strict-transport|x-frame|content-security|x-content)' | cut -c1-90 || true
+}
 case "$TASK" in
   status) status ;;
   https) https ;;

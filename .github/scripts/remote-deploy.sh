@@ -16,10 +16,10 @@ ls "$APP"/config/application*.yml >/dev/null 2>&1 || { echo "!! $APP/config/appl
 #  - ANT_HARDENED : 어떤 프로필로 떠 있든 운영 보안 모드(Swagger 비활성, CORS https 한정 등)를 강제한다.
 #  - ANT_CRYPTO_KEY : 증권사 앱키·시크릿을 암호화하는 마스터 키(32바이트). 한 번 만들어진 뒤에는 절대 바꾸지 말 것.
 #    잃어버리면 저장된 계좌 키를 복호화할 수 없으므로 app.env 를 백업해 둔다.
-# 예전 배포가 개행 없이 덧붙여 값이 붙어 버린 경우를 고친다(예: TZ=Asia/SeoulANT_HARDENED=true).
-if sudo grep -q 'ANT_HARDENED=true' "$APP/app.env" && ! sudo grep -q '^ANT_HARDENED=' "$APP/app.env"; then
-  sudo sed -i -E 's/^([A-Za-z_][A-Za-z_0-9]*=.*)ANT_HARDENED=true$/\1\nANT_HARDENED=true/' "$APP/app.env"
-  echo ">> app.env: repaired a merged ANT_HARDENED line"
+# 예전 배포가 개행 없이 덧붙여 앞 줄 값에 붙어 버린 경우를 고친다(예: TZ=Asia/SeoulANT_HARDENED=true -> TZ=Asia/Seoul).
+if sudo grep -qE '^[A-Za-z_][A-Za-z_0-9]*=.+ANT_HARDENED=true$' "$APP/app.env"; then
+  sudo sed -i -E 's/^([A-Za-z_][A-Za-z_0-9]*=.*)ANT_HARDENED=true$/\1/' "$APP/app.env"
+  echo ">> app.env: repaired a merged ANT_HARDENED suffix"
 fi
 ensure_env() {
   local name="$1" value="$2"

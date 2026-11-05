@@ -17,6 +17,16 @@ nginx_summary() {
     | sed -E 's/^\s+//' | grep -viE 'password|secret|token|key=' || true
 }
 
+# 80 번 포트를 받는 server 블록 전문. proxy 헤더(X-Forwarded-*)가 제대로 있는지 확인하는 용도.
+nginx_site80() {
+  sudo nginx -T 2>/dev/null | awk '
+    /^[ \t]*server[ \t]*\{/ { inblk=1; depth=0; buf="" }
+    inblk {
+      buf = buf $0 "\n"
+      n = gsub(/\{/, "{"); m = gsub(/\}/, "}"); depth += n - m
+      if (depth == 0) { if (buf ~ /listen[ \t]+80/) printf "%s", buf; inblk=0 }
+    }' | sed -E 's/^\s+/  /' | grep -viE 'password|secret|token' || true
+}
 status() {
   section "os"
   (. /etc/os-release && echo "$PRETTY_NAME") || true
@@ -36,6 +46,8 @@ status() {
   ls /opt/antlab/ant-backend/config 2>/dev/null | tr '\n' ' '; echo
   section "nginx structure"
   nginx_summary
+  section "site :80 (full block)"
+  nginx_site80
   section "certbot"
   (command -v certbot && certbot --version 2>&1) || echo "not installed"
   sudo ls /etc/letsencrypt/live 2>/dev/null || true

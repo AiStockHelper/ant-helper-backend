@@ -23,6 +23,31 @@ public class AppProperties {
 	private Agent agent = new Agent();
 	private Calendar calendar = new Calendar();
 	private Screening screening = new Screening();
+	private Security security = new Security();
+
+	@Getter
+	@Setter
+	public static class Security {
+		/** 증권사 앱키·시크릿 암호화 마스터 키(Base64 32바이트). 운영에서는 반드시 환경변수로 넣는다. */
+		private String cryptoKey;
+		/** 로그인 비밀번호/인증번호 불일치가 이 횟수만큼 연속되면 잠근다. 로그인에 성공하면 초기화된다. */
+		private int maxLoginFailures = 10;
+		/** 같은 IP 에서 누적된 실패가 이 횟수를 넘으면 그 IP 를 잠근다. */
+		private int maxFailuresPerIp = 30;
+		/** 인증 메일을 연속으로 이 횟수까지만 보낸다(인증 성공 시 초기화). */
+		private int maxOtpSends = 10;
+		private int lockMinutes = 30;
+		private int otpTtlMinutes = 5;
+		/** 인증번호 하나당 틀려도 되는 횟수. 넘으면 그 인증번호는 폐기된다. */
+		private int otpMaxAttempts = 5;
+		private int otpResendCooldownSeconds = 30;
+		/** 실계좌 민감 작업 직전에 받은 이메일 인증의 유효 시간 */
+		private int stepUpMinutes = 10;
+		/** 개발 전용: true 면 인증번호를 로그에 남긴다(메일이 안 가는 로컬 테스트용). 운영 금지. */
+		private boolean otpDebugLog = false;
+		/** 예측 서버와 공유하는 비밀 헤더 값. 비어 있으면 헤더를 보내지 않는다. */
+		private String predictionSecret;
+	}
 
 	@Getter
 	@Setter
@@ -104,6 +129,10 @@ public class AppProperties {
 		private long maxOrderAmountUsd = 10_000L;
 		private BigDecimal usLimitSlippagePct = new BigDecimal("0.3");
 		private int actionTtlMinutes = 10;
+		/** 실전 계좌 한 곳이 하루(한국시간 기준)에 매수할 수 있는 총액과 주문 횟수. 모의 계좌에는 적용하지 않는다. */
+		private long dailyBuyCapKrw = 3_000_000L;
+		private long dailyBuyCapUsd = 2_000L;
+		private int dailyOrderCountCap = 20;
 		/** 개발/테스트 전용. true 이면 장 운영 시간 검사를 건너뛴다. 운영에서는 반드시 false. */
 		private boolean skipMarketHoursCheck = false;
 	}

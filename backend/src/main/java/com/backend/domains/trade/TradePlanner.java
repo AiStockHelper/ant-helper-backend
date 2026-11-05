@@ -54,6 +54,7 @@ public class TradePlanner {
 	private final MarketDataService marketData;
 	private final TradingService tradingService;
 	private final AppProperties props;
+	private final DailyOrderCap dailyCap;
 	private final com.backend.market.TradingCalendar calendar;
 
 	public static String normalizeSide(String side) {
@@ -142,8 +143,19 @@ public class TradePlanner {
 	}
 
 	public OrderOutcome execute(MemberAccount account, Plan plan) {
-		return tradingService.placeOrder(account,
-			new OrderRequest(plan.market(), plan.symbol(), plan.side(), plan.quantity(), plan.limitPrice()));
+		dailyCap.reserve(account, plan);
+		OrderOutcome out;
+		try {
+			out = tradingService.placeOrder(account,
+				new OrderRequest(plan.market(), plan.symbol(), plan.side(), plan.quantity(), plan.limitPrice()));
+		} catch (RuntimeException e) {
+			dailyCap.release(account, plan);
+			throw e;
+		}
+		if (!out.success()) {
+			dailyCap.release(account, plan);
+		}
+		return out;
 	}
 
 	/** 확인 카드에 보여줄 항목 */

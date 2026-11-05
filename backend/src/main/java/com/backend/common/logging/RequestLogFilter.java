@@ -85,11 +85,8 @@ public class RequestLogFilter extends OncePerRequestFilter {
 		return s.matches("[A-Za-z0-9_-]{1,40}") ? s : null;
 	}
 
+	/** X-Forwarded-For 를 직접 믿지 않는다. 신뢰하는 프록시 뒤에서는 톰캣(RemoteIpValve)이 getRemoteAddr 에 반영한다. */
 	private static String clientIp(HttpServletRequest request) {
-		String xff = request.getHeader("X-Forwarded-For");
-		if (xff != null && !xff.isBlank()) {
-			return xff.split(",")[0].trim();
-		}
 		return request.getRemoteAddr();
 	}
 }

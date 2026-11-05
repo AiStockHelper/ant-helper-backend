@@ -4,41 +4,26 @@ import java.util.Optional;
 
 import org.springframework.security.core.Authentication;
 
-import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 public interface JwtTokenProvider {
-
-	Authentication getAuthentication(String accessToken);
 
 	String createAccessToken(Long memberId);
 
 	String createRefreshToken();
 
-	void updateRefreshToken(Long memberId, String refreshToken);
-
-	void destroyRefreshToken(Long memberId);
-
-	void sendAccessAndRefreshToken(HttpServletResponse response, String accessToken, String refreshToken);
-
-	void sendAccessToken(HttpServletResponse response, String accessToken);
-
 	Optional<String> extractAccessToken(HttpServletRequest request);
 
-	Optional<String> extractRefreshToken(HttpServletRequest request);
+	/** 서명·만료·종류(액세스/리프레시)까지 맞는 토큰이면 회원 ID 를 돌려준다. */
+	Optional<Long> validAccessMemberId(String accessToken);
 
-	Claims parseClaims(String accessToken);
+	/** 서명과 만료, 리프레시 토큰 형식이 맞는지만 본다. 저장소에 있는지는 AuthService 가 확인한다. */
+	boolean isValidRefreshToken(String refreshToken);
 
-	Optional<Long> extractMemberId(String accessToken);
-
-	void setAccessTokenHeader(HttpServletResponse response, String accessToken);
-
-	void setRefreshTokenHeader(HttpServletResponse response, String refreshToken);
-
-	boolean isTokenValid(String token);
-
-	void checkRefreshTokenAndReIssueAccessAndRefreshToken(HttpServletResponse response, String refreshToken);
+	Authentication getAuthentication(Long memberId);
 
 	boolean isLogout(String accessToken);
+
+	/** 로그아웃한 액세스 토큰을 만료 때까지 쓰지 못하게 한다. */
+	void revoke(String accessToken);
 }

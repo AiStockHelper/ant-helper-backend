@@ -31,10 +31,11 @@ public class ExceptionHandlingFilter extends OncePerRequestFilter {
 			ErrorResponse errorResponse = ErrorResponse.from(e.getErrorCode());
 			ResponseWriter.writeResponse(response, errorResponse, e.getErrorCode().getHttpStatus());
 		} catch (Exception e) {
-			log.warn("ExceptionHandlingFilter: {}", e.getMessage());
+			log.error("ExceptionHandlingFilter: 처리되지 않은 예외", e);
 			ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
 
-			ErrorResponse errorResponse = ErrorResponse.of(errorCode, List.of(e.getMessage()));
+			// 내부 예외 메시지는 응답에 싣지 않는다(로그에만 남긴다).
+			ErrorResponse errorResponse = ErrorResponse.from(errorCode);
 
 			ResponseWriter.writeResponse(response, errorResponse, errorCode.getHttpStatus());
 		}

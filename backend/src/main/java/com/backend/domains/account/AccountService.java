@@ -4,8 +4,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 
-import javax.crypto.SecretKey;
-
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.backend.common.dto.PageResponse;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
-import com.backend.common.util.encoder.EncryptUtil;
+import com.backend.common.security.audit.SecurityAudit;
 import com.backend.domains.account.AccountDtos.Account;
 import com.backend.domains.account.AccountDtos.AccountDetail;
 import com.backend.domains.account.AccountDtos.CreateAccountRequest;
@@ -43,6 +41,9 @@ public class AccountService {
 	private final KisGateway kis;
 	private final TradingService tradingService;
 	private final ApplicationEventPublisher events;
+	private final com.backend.common.crypto.CryptoService crypto;
+	private final com.backend.domains.auth.otp.StepUpService stepUp;
+	private final SecurityAudit audit;
 
 	/** 소유권을 확인해서 계좌를 돌려준다. 다른 사람의 계좌 ID 를 넣으면 존재하지 않는 것처럼 응답한다. */
 	@Transactional(readOnly = true)
@@ -96,18 +97,19 @@ public class AccountService {
 			log.warn("계좌 등록 거절(중복) member={} type={}", memberId, req.accountType());
 			throw ApiException.from(ErrorCode.DUPLICATE_MEMBER_ACCOUNT);
 		}
+		if (req.accountType() == com.backend.order.kis.enums.AccountType.REAL_TRADE) {
+			stepUp.require(memberId);
+		}
 		validateWithKis(req);
 
-		SecretKey appKeySalt = EncryptUtil.generateKey();
-		SecretKey secretKeySalt = EncryptUtil.generateKey();
 		boolean first = repository.findAllByMemberId(memberId).isEmpty();
 		MemberAccount account = MemberAccount.builder()
 			.memberId(memberId)
 			.accountType(req.accountType())
-			.appKey(EncryptUtil.encrypt(req.appKey().trim(), appKeySalt))
-			.appKeySalt(EncryptUtil.keyToString(appKeySalt))
-			.secretKey(EncryptUtil.encrypt(req.secretKey().trim(), secretKeySalt))
-			.secretKeySalt(EncryptUtil.keyToString(secretKeySalt))
+			.appKey(crypto.encrypt(req.appKey().trim()))
+			.appKeySalt("v2")
+			.secretKey(crypto.encrypt(req.secretKey().trim()))
+			.secretKeySalt("v2")
 			.accountNumber(req.accountNumber())
 			.accountProductCode(req.accountProductCode())
 			.alias(req.alias() == null || req.alias().isBlank() ? null : req.alias().trim())
@@ -115,6 +117,7 @@ public class AccountService {
 			.build();
 		MemberAccount saved = repository.save(account);
 		log.info("계좌 등록 member={} account={} type={} default={}", memberId, saved.getId(), req.accountType(), first);
+		audit.record(SecurityAudit.ACCOUNT_ADDED, memberId, null, null, "account=" + saved.getId() + " type=" + req.accountType());
 		return Account.from(saved);
 	}
 
@@ -138,6 +141,7 @@ public class AccountService {
 		repository.delete(a);
 		log.info("계좌 삭제 member={} account={} wasDefault={}", memberId, accountId, wasDefault);
 		kis.evict(accountId);
+		audit.record(SecurityAudit.ACCOUNT_DELETED, memberId, null, null, "account=" + accountId);
 		events.publishEvent(new AccountDeletedEvent(memberId, accountId));
 		if (wasDefault) {
 			repository.findAllByMemberIdOrderByIdAsc(memberId).stream().findFirst().ifPresent(n -> n.markDefault(true));

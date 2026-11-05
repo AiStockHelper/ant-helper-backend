@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,11 +19,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import com.backend.common.properties.SecurityProperties;
+
 import com.backend.common.security.filter.exceptionHandlingFilter.ExceptionHandlingFilter;
 import com.backend.common.security.filter.jwtFilter.JwtAuthenticationFilter;
 import com.backend.common.security.filter.jwtFilter.JwtTokenProvider;
-import com.backend.domains.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
@@ -29,13 +30,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-	private final MemberRepository memberRepository;
-
 	private final UserDetailsService userDetailsService;
 	private final JwtTokenProvider jwtTokenProvider;
 
 	private final UrlBasedCorsConfigurationSource ConfigurationSource;
-	private final SecurityProperties securityProperties;
+	private final SecurityPolicy policy;
 	private final PasswordEncoder passwordEncoder;
 	private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
@@ -50,6 +49,17 @@ public class SecurityConfig {
 			.sessionManagement(session -> session
 				.sessionCreationPolicy(SessionCreationPolicy.STATELESS));  // 토큰을 사용하기 때문에 Session 사용 x
 
+		// 보안 헤더. HSTS 는 HTTPS 로 들어온 요청에만 붙는다(프록시의 X-Forwarded-Proto 를 톰캣이 반영).
+		http.headers(h -> {
+			h.frameOptions(f -> f.deny());
+			h.contentTypeOptions(Customizer.withDefaults());
+			h.referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER));
+			h.httpStrictTransportSecurity(s -> s.includeSubDomains(true).maxAgeInSeconds(31_536_000));
+			if (policy.hardened()) {
+				h.contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'"));
+			}
+		});
+
 		// cors 설정
 		http
 			.cors(cors -> cors.configurationSource(ConfigurationSource));
@@ -60,7 +70,7 @@ public class SecurityConfig {
 				// SSE(SseEmitter) 완료 시 발생하는 ASYNC 디스패치는 이미 인증된 요청의 연속이므로 다시 막지 않는다.
 				.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC, jakarta.servlet.DispatcherType.ERROR)
 				.permitAll()
-				.requestMatchers(securityProperties.getPermitUrls()).permitAll() // PERMIT_URLS만 바로 접근 가능
+				.requestMatchers(policy.permitUrlArray()).permitAll() // PERMIT_URLS만 바로 접근 가능
 				.anyRequest().authenticated());
 
 		//필터 체인 추가
@@ -83,7 +93,7 @@ public class SecurityConfig {
 
 	@Bean
 	public JwtAuthenticationFilter jwtAuthenticationFilter() {
-		return new JwtAuthenticationFilter(jwtTokenProvider, memberRepository, securityProperties, pathMatcher);
+		return new JwtAuthenticationFilter(jwtTokenProvider, policy, pathMatcher);
 	}
 
 	@Bean

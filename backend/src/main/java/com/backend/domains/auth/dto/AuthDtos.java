@@ -43,4 +43,23 @@ public final class AuthDtos {
 
 	public record AuthTokens(String accessToken, String refreshToken, long expiresIn, Me member) {
 	}
+
+	/** 로그인 1단계 결과: 이메일로 인증번호를 보냈으니 challengeId 와 함께 번호를 제출하라는 뜻 */
+	public record LoginChallenge(String challengeId, String maskedEmail, int expiresInSeconds, int resendAfterSeconds) {
+	}
+
+	public record VerifyLoginRequest(
+		@NotBlank(message = "challengeId는 필수입니다.") String challengeId,
+		@NotBlank(message = "인증번호는 필수입니다.") @Size(min = 6, max = 6, message = "인증번호는 6자리입니다.") String code
+	) {
+	}
+
+	public record StepUpChallenge(String challengeId, int expiresInSeconds, int resendAfterSeconds, int validMinutes) {
+	}
+
+	public record StepUpVerifyRequest(
+		@NotBlank(message = "challengeId는 필수입니다.") String challengeId,
+		@NotBlank(message = "인증번호는 필수입니다.") @Size(min = 6, max = 6, message = "인증번호는 6자리입니다.") String code
+	) {
+	}
 }

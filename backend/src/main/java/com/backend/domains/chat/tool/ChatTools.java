@@ -153,42 +153,66 @@ public class ChatTools {
 			"horizon", "다음 거래일", "disclaimer", "통계 모델의 참고 지표이며 수익을 보장하지 않습니다.");
 	}
 
-	@Tool(name = "recommend_stocks", description = "AI 예측 모델로 내일 상승이 예상되는 종목을 순위로 보여줍니다(모델 추천). 야간 배치로 분석해 둔 한국·미국 유동성 상위 종목 전체(수백~천 개)가 대상이라 즉시 응답합니다. "
-		+ "결과에는 모델이 고른 종목(modelPicks)과 점수가 높은 다른 후보(otherCandidates)의 지표가 함께 들어 있습니다. "
-		+ "사용자가 종목 추천을 요청하면 이 도구를 먼저 부르고, 이어서 당신(AI)의 의견을 show_llm_picks 로 제출하세요.")
+	@Tool(name = "recommend_stocks", description = "'모델 추천' 카드를 화면에 띄웁니다. 야간 배치가 한국·미국 유동성 상위 종목의 변동성·RSI·단기 등락 등을 비교해 점수를 매긴 결과이며, "
+		+ "과거 검증에서 방향 예측보다 '변동성이 낮고 최근 덜 오른(눌린) 종목'이 일관되게 유리해 그 기준으로 순위를 매깁니다. "
+		+ "종목 추천 요청에서는 이 도구를 가장 먼저 부르되, 기본적으로 모델의 종목·점수는 당신에게 공개되지 않습니다(카드로만 사용자에게 보여 줍니다). "
+		+ "당신의 추천은 모델과 무관하게 market_scan 으로 직접 조사해서 정해야 합니다. "
+		+ "사용자가 명시적으로 '모델 추천만' 알려 달라고 할 때만 modelOnly=true 로 불러 내용을 받아 설명하세요.")
 	public Object recommendStocks(
 		@ToolParam(description = "KRX(한국, 기본) 또는 US(미국)", required = false) String market,
 		@ToolParam(description = "추천 개수(1~10). 기본 5", required = false) Integer count,
+		@ToolParam(description = "true 면 모델 추천 내용을 당신에게도 돌려줍니다. 사용자가 모델 추천만 원할 때만 사용", required = false) Boolean modelOnly,
 		ToolContext ctx
 	) {
 		ChatSession s = session(ctx);
 		String group = ScreeningService.normalizeGroup(market);
 		int n = count == null ? 5 : Math.max(1, Math.min(count, 10));
 		MemberAccount account = s.account();
-		List<Recommendation> picks = predictionService.withLivePrices(account, predictionService.recommend(account, group, n));
-		List<Recommendation> pool = predictionService.analysisPool(account, group, Math.min(20, Math.max(10, n * 2)));
-		s.rememberCandidates(pool, picks);
-		String basis = !picks.isEmpty() && picks.get(0).asOf() != null ? picks.get(0).asOf() + " 장마감 기준 야간 분석"
-			: !pool.isEmpty() && pool.get(0).asOf() != null ? pool.get(0).asOf() + " 장마감 기준 야간 분석" : "실시간 분석(대표 종목 후보군)";
+		List<Recommendation> picks = predictionService.withLivePrices(account, predictionService.modelPicks(account, group, n));
+		s.rememberCandidates(picks, picks);
+		String basis = !picks.isEmpty() && picks.get(0).asOf() != null ? picks.get(0).asOf() + " 장마감 기준 야간 분석" : "실시간 분석(대표 종목 후보군)";
 		if (!picks.isEmpty()) {
 			s.card("recommendations", picks);
 		}
 		s.summary(picks.size() + "개 종목");
+		if (!Boolean.TRUE.equals(modelOnly)) {
+			return map("status", picks.isEmpty() ? "NO_MODEL_PICKS" : "MODEL_CARD_SHOWN", "modelPickCount", picks.size(), "basis", basis,
+				"note", "모델 추천 카드가 사용자 화면에 표시되었습니다. 모델의 종목과 점수는 당신에게 공개되지 않으며, 당신의 추천은 모델을 참고하지 않고 "
+					+ "market_scan·get_quote·get_candles 로 직접 조사해 정해야 합니다. 이제 market_scan 으로 시장을 훑어보세요.");
+		}
 		List<Object> pickMaps = new ArrayList<>();
 		for (int i = 0; i < picks.size(); i++) {
 			pickMaps.add(recMap(picks.get(i), i + 1));
 		}
-		List<Object> others = new ArrayList<>();
-		for (Recommendation r : pool) {
-			if (!s.isModelPick(r.productNumber())) {
-				others.add(recMap(r, 0));
-			}
-		}
-		return map("basis", basis, "modelPicks", pickMaps, "otherCandidates", others,
-			"note", picks.isEmpty() ? "모델 기준(상승 예상 + 점수 양수)을 만족하는 종목이 없습니다. 억지로 추천하지 말고 그대로 알리세요." : null,
-			"next", "이제 이 지표들을 보고 당신(AI)의 의견으로 최대 " + n + "종목을 골라 show_llm_picks 로 제출하세요. 후보 밖 종목도 고를 수 있습니다.");
+		return map("basis", basis, "modelPicks", pickMaps,
+			"note", picks.isEmpty() ? "점수 기준을 만족하는 종목이 없습니다. 억지로 추천하지 말고 그대로 알리세요." : null);
 	}
 
+	@Tool(name = "market_scan", description = "모델과 무관한 시장 원자료를 봅니다. 야간에 수집한 거래대금 상위 종목(추천 대상과 같은 범위)을 기준별로 정렬해 "
+		+ "각 종목의 20일 변동성(vol20,%), RSI, 최근 1·5·20일 수익률(ret1/ret5/ret20,%), 60일 수익률(mom60), 20·60일선 대비 위치(pxMa20/pxMa60,%), "
+		+ "정배열 여부(align), 거래량 배수(volRatio), 60일 고점 대비(distHigh60,%), 거래대금(avgTradeValue)을 보여 줍니다. 모델 점수나 방향 예측은 포함되지 않습니다. "
+		+ "view: LIQUID(거래대금 큰 순), STABLE(변동성 낮은 순), VOLATILE, OVERSOLD(RSI 낮은 순), OVERBOUGHT, DIP(5일 수익 낮은 순), RALLY(5일 수익 높은 순), "
+		+ "MOMENTUM(60일 수익 높은 순), VOLUME_SURGE(거래량 급증), NEAR_HIGH(60일 고점 근접). 종목 추천을 할 때는 서로 다른 view 를 두세 개 이상 보고 종합해 판단하세요.")
+	public Object marketScan(
+		@ToolParam(description = "KRX(한국, 기본) 또는 US(미국)", required = false) String market,
+		@ToolParam(description = "정렬 기준(위 목록). 기본 LIQUID", required = false) String view,
+		@ToolParam(description = "가져올 종목 수(1~30). 기본 20", required = false) Integer count,
+		ToolContext ctx
+	) {
+		ChatSession s = session(ctx);
+		String group = ScreeningService.normalizeGroup(market);
+		ScreeningService.ScanView v = ScreeningService.ScanView.parse(view);
+		int n = count == null ? 20 : Math.max(1, Math.min(count, 30));
+		List<ScreeningService.ScanRow> rows = screening.scan(group, v, n);
+		if (rows.isEmpty()) {
+			return map("error", "야간 분석 데이터가 아직 없습니다. get_quote·get_candles 로 종목을 직접 확인하세요.");
+		}
+		s.summary(v.label() + " " + rows.size() + "종목");
+		return map("market", group, "view", v.name(), "viewLabel", v.label(),
+			"currencyNote", "KRX 는 원, US 는 달러 단위. avgTradeValue 는 최근 20일 평균 거래대금(해당 통화).",
+			"rows", rows.stream().map(r -> map("symbol", r.productNumber(), "name", r.name(), "market", r.market(),
+				"currency", r.currency(), "price", r.price(), "avgTradeValue", Math.round(r.avgTradeValue()), "facts", r.facts())).toList());
+	}
 	private static Map<String, Object> recMap(Recommendation r, int rank) {
 		return map("modelRank", rank == 0 ? null : rank, "symbol", r.productNumber(), "name", r.name(), "market", r.market(),
 			"currency", r.currency(), "currentPrice", r.currentPrice(), "score", r.score(),
@@ -199,11 +223,10 @@ public class ChatTools {
 	public record LlmPick(String symbol, String market, String reason, String outlook) {
 	}
 
-	@Tool(name = "show_llm_picks", description = "당신(AI)이 직접 판단해 고른 종목과 이유를 '모델 추천'과 나란히 보여주는 카드를 만듭니다. "
-		+ "recommend_stocks 후보 안에서 고르는 것이 좋지만, 후보 밖 종목도 고를 수 있습니다. 후보 밖이면 symbol 은 실제 종목 코드/티커여야 하며(모르면 search_stock 으로 먼저 확인), "
-		+ "서버가 실제 시세와 모델 분석 여부를 조회해 카드에 표시합니다(존재하지 않는 종목은 거절됩니다). "
-		+ "이유(reason)는 도구가 준 지표나 조회한 값에 근거해 한두 문장으로 쓰고, 실시간 뉴스·공시는 확인하지 못했으므로 지어내지 마세요. 모델 추천과 의견이 갈리면 그대로 고르세요.")
-	public Object showLlmPicks(
+	@Tool(name = "show_llm_picks", description = "당신(AI)이 직접 조사해 고른 종목과 이유를 'AI 의견' 카드로 보여줍니다. 모델 추천과 무관하게, market_scan 의 여러 기준·get_quote·get_candles 로 확인한 사실을 종합해 고르세요"
+		+ "(변동성·수익률 흐름·과열 여부·거래량·분산 등). 후보는 market_scan 에 나온 종목이 기본이지만 search_stock 으로 확인한 다른 종목도 괜찮습니다. "
+		+ "이유(reason)는 조회한 숫자에 근거해 한두 문장으로 쓰고, 실시간 뉴스·공시·재무는 확인하지 못했으므로 지어내지 마세요. "
+		+ "서버가 실제 시세를 조회해 카드에 표시하며 존재하지 않는 종목은 거절됩니다.")	public Object showLlmPicks(
 		@ToolParam(description = "당신이 고른 종목 목록(최대 10개). symbol=종목 코드/티커, market=KRX/NASDAQ/NYSE/AMEX(모르면 생략), reason=근거, outlook='단기 상승 기대', '관망', '변동성 주의' 같은 한 줄 전망") List<LlmPick> picks,
 		ToolContext ctx
 	) {
@@ -231,7 +254,7 @@ public class ChatTools {
 		List<Object> noModel = shown.stream().filter(m -> !Boolean.TRUE.equals(m.get("modelAnalyzed"))).map(m -> m.get("productNumber")).toList();
 		return map("status", "SHOWN", "shown", shown.size(), "overlapWithModelTop", overlap, "withoutModelAnalysis", noModel,
 			"rejected", rejected,
-			"note", "카드가 표시되었습니다. 답변은 '모델 추천'과 'AI 의견' 두 부분으로 짧게 정리하고, 겹치는 종목·서로 다른 종목·모델 분석이 없는 종목을 구분해 알려 주세요.");
+			"note", "카드가 표시되었습니다. 답변은 '모델 추천'(카드 참고)과 'AI 의견'을 구분해 짧게 정리하되, 당신의 의견은 모델과 무관하게 조사한 결과임을 전제로 설명하세요. 겹치는 종목이 있으면 우연히 같은 결론이 나왔다고만 알리세요.");
 	}
 
 	/** AI 가 고른 종목 하나를 실제 데이터로 검증하고 카드 항목으로 만든다. 존재하지 않으면 예외. */

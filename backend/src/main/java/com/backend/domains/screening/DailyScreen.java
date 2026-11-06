@@ -72,11 +72,16 @@ public class DailyScreen {
 	@Column(name = "avg_trade_value")
 	private Double avgTradeValue;
 
+	/** 순위에 쓴 사실들(JSON). AI 가 모델 점수 없이 직접 판단할 때 쓰는 원자료. */
+	@Column(name = "facts_json", columnDefinition = "TEXT")
+	private String factsJson;
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 
 	public DailyScreen(LocalDate tradeDate, String marketGroup, Market market, String symbol, String name, BigDecimal price,
-		double score, double predictedChangeRate, String direction, double confidence, String reasonsJson, Double avgTradeValue) {
+		double score, double predictedChangeRate, String direction, double confidence, String reasonsJson, Double avgTradeValue,
+		String factsJson) {
 		this.tradeDate = tradeDate;
 		this.marketGroup = marketGroup;
 		this.market = market;
@@ -89,6 +94,7 @@ public class DailyScreen {
 		this.confidence = confidence;
 		this.reasonsJson = reasonsJson;
 		this.avgTradeValue = avgTradeValue;
+		this.factsJson = factsJson;
 	}
 
 	@PrePersist

@@ -78,7 +78,7 @@ public class McpTools {
 		@ToolParam(description = "추천 개수(1~10). 기본 5", required = false) Integer count
 	) {
 		String group = market != null && market.equalsIgnoreCase("US") ? "US" : "KRX";
-		return predictionService.recommend(account(), group, count == null ? 5 : Math.max(1, Math.min(count, 10)));
+		return predictionService.modelPicks(account(), group, count == null ? 5 : Math.max(1, Math.min(count, 10)));
 	}
 
 	@Tool(name = "get_market_status", description = "현재 시각과 한국/미국 정규장 개장 여부를 확인합니다.")

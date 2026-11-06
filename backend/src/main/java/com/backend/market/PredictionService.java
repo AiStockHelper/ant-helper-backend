@@ -78,12 +78,19 @@ public class PredictionService {
 			.toList();
 	}
 
-	/** 방향과 무관하게 점수가 높은 순의 분석 풀(AI 의견의 참고 자료). */
-	public List<Recommendation> analysisPool(MemberAccount account, String group, int size) {
-		if (screening.freshDate(com.backend.domains.screening.ScreeningService.normalizeGroup(group)).isPresent()) {
-			return screening.topByScore(com.backend.domains.screening.ScreeningService.normalizeGroup(group), Math.max(1, Math.min(size, 50)));
+	/**
+	 * 모델 추천(화면의 '모델 추천' 카드): 변동성이 낮고 단기로 눌린 유동성 상위 종목을 점수순으로.
+	 * 단기 모델의 방향 예측은 참고값이며 조건이 아니다(과거 검증에서 방향 적중률이 동전 던지기 수준이었다).
+	 * 야간 스크리닝 결과가 없으면 대표 후보군을 실시간으로 분석한다.
+	 */
+	public List<Recommendation> modelPicks(MemberAccount account, String group, int size) {
+		String g = com.backend.domains.screening.ScreeningService.normalizeGroup(group);
+		int n = Math.max(1, Math.min(size, 50));
+		if (screening.freshDate(g).isPresent()) {
+			return screening.picks(g, n);
 		}
-		return recommendLive(account, group, size, null);
+		return recommendLive(account, g, n, null).stream()
+			.filter(r -> r.score() > com.backend.domains.screening.ScreeningService.MIN_PICK_SCORE).toList();
 	}
 
 	/** 화면에 보여줄 소수의 종목에 최신 현재가를 덮어쓴다(증권사 시세). 실패한 종목은 분석 기준 종가를 그대로 둔다. */

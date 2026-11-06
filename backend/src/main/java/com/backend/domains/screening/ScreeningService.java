@@ -304,6 +304,11 @@ public class ScreeningService {
 			isRunning(group), freshDate(group).isPresent());
 	}
 
+	/** 가장 최근 분석이 순위 근거 값(facts)을 담은 새 방식으로 저장돼 있는가 */
+	public boolean hasFacts(String group) {
+		return repo.latestTradeDate(group).map(d -> repo.countByMarketGroupAndTradeDateAndFactsJsonIsNotNull(group, d) > 0).orElse(false);
+	}
+
 	public boolean hasAny(String group) {
 		return repo.latestTradeDate(group).isPresent();
 	}

@@ -35,6 +35,8 @@ public interface DailyScreenRepository extends JpaRepository<DailyScreen, Long> 
 
 	long countByMarketGroupAndTradeDate(String marketGroup, LocalDate tradeDate);
 
+	long countByMarketGroupAndTradeDateAndFactsJsonIsNotNull(String marketGroup, LocalDate tradeDate);
+
 	long countByMarketGroupAndTradeDateAndScoreGreaterThan(String marketGroup, LocalDate tradeDate, double score);
 
 	@Modifying

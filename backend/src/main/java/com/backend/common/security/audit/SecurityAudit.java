@@ -22,6 +22,7 @@ public class SecurityAudit {
 	public static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
 	public static final String AGENT_STARTED = "AGENT_STARTED";
 	public static final String ORDER_APPROVED = "ORDER_APPROVED";
+	public static final String AGENT_EDITED = "AGENT_EDITED";
 	public static final String REFRESH_REUSE = "REFRESH_REUSE_DETECTED";
 	public static final String LOGOUT = "LOGOUT";
 

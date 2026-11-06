@@ -59,6 +59,10 @@ public class AgentTask {
 	@Column(name = "instruction", columnDefinition = "LONGTEXT")
 	private String instruction;
 
+	/** 지시(정리본)를 고칠 때마다 이전 내용을 남긴다. JSON 배열 [{at, by, title, instruction}], 최근 20개. */
+	@Column(name = "instruction_history", columnDefinition = "LONGTEXT")
+	private String instructionHistory;
+
 	@Column(name = "config_json", columnDefinition = "LONGTEXT")
 	private String configJson;
 
@@ -161,6 +165,15 @@ public class AgentTask {
 
 	public void attachConversation(Long conversationId) {
 		this.conversationId = conversationId;
+	}
+
+	/** 제목·지시를 새 내용으로 바꾸고, 바꾸기 전 내용을 이력(historyJson)으로 남긴다. */
+	public void revise(String newTitle, String newInstruction, String historyJson) {
+		if (newTitle != null && !newTitle.isBlank()) {
+			this.title = newTitle.length() > 200 ? newTitle.substring(0, 200) : newTitle;
+		}
+		this.instruction = newInstruction;
+		this.instructionHistory = historyJson;
 	}
 
 	public void saveMemory(String memory) {

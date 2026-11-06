@@ -69,7 +69,7 @@ check() {
   echo "app.env TZ / profile / hardened:"
   sudo grep -E '^(TZ|SPRING_PROFILES_ACTIVE|ANT_HARDENED)' /opt/antlab/ant-backend/app.env | cut -c1-80 || true
   echo "ERROR messages (count, digits/emails masked):"
-  sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep ' ERROR ' | sed -E 's/^.* ERROR //; s/\x1b\[[0-9;]*m//g; s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/EMAIL/g; s/[0-9]+/N/g' | cut -c1-140 | sort | uniq -c | sort -rn | head -6
+  sudo journalctl -u ant-backend --since "$since" --no-pager 2>/dev/null | grep ' ERROR ' | sed -E 's/^.* ERROR //; s/\x1b\[[0-9;]*m//g; s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/EMAIL/g; s/[0-9]+/N/g' | cut -c1-140 | sort | uniq -c | sort -rn | head -6 || true
   section "prediction"
   printf 'service: %s  health: %s\n' "$(systemctl is-active ant-prediction)" "$(curl -s -m 5 http://127.0.0.1:8000/health || echo down)"
   section "nginx"

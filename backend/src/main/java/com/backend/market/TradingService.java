@@ -141,6 +141,12 @@ public class TradingService {
 			Currency.USD.round(cash.add(evaluation)), pl, rate(pl, purchase), holdings);
 	}
 
+	/** 증권사가 알려 주는 달러-원 환율. 가져오지 못하면 null. */
+	public Double exchangeRate(MemberAccount account) {
+		BigDecimal rate = overseasCash(account)[1];
+		return rate == null || rate.signum() == 0 ? null : rate.doubleValue();
+	}
+
 	/** [주문가능 외화, 환율] */
 	private BigDecimal[] overseasCash(MemberAccount account) {
 		PsAmountApi api = new PsAmountApi(account.isPaper() ? "VTTS3007R" : "TTTS3007R", "NASD", "1", "AAPL");

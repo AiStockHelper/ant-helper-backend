@@ -78,6 +78,8 @@ public class AppProperties {
 		private boolean runOnStartupIfEmpty = false;
 		/** 결과가 이 일수보다 오래되면 낡았다고 보고 실시간 분석으로 대신한다. */
 		private int maxAgeDays = 6;
+		/** AI 가 시장 개요(market_scan)를 볼 때 훑는 범위: 거래대금 상위 이 개수 */
+		private int scanPool = 300;
 		private int keepDays = 400;
 		/** 배치 한 번을 기다릴 최대 시간(분) */
 		private int timeoutMinutes = 120;

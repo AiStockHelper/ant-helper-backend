@@ -27,7 +27,7 @@ import lombok.NoArgsConstructor;
 public class ChatAction {
 
 	/** SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY 는 이전 예약 방식으로 만든 기록을 읽기 위해서만 남겨 둔다. */
-	public enum Kind {ORDER, AGENT_TASK, SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY}
+	public enum Kind {ORDER, AGENT_TASK, AGENT_TASK_UPDATE, SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY}
 
 	public enum Status {PENDING, APPROVED, EXECUTED, REJECTED, FAILED, EXPIRED}
 

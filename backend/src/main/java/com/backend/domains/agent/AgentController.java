@@ -19,6 +19,8 @@ import com.backend.domains.agent.AgentDtos.AgentTaskDetail;
 import com.backend.domains.agent.AgentDtos.AgentTaskDto;
 import com.backend.domains.agent.AgentDtos.CreateTaskRequest;
 import com.backend.domains.agent.AgentDtos.SkillDto;
+import com.backend.domains.agent.AgentDtos.UpdateTaskRequest;
+import org.springframework.web.bind.annotation.PatchMapping;
 import com.backend.domains.agent.skill.Skill;
 import com.backend.domains.agent.skill.SkillRegistry;
 
@@ -37,6 +39,7 @@ public class AgentController {
 	private final AgentTradingService trading;
 	private final com.backend.domains.account.AccountService accountService;
 	private final com.backend.domains.auth.otp.StepUpService stepUp;
+	private final com.backend.common.security.audit.SecurityAudit audit;
 
 	// ─────────────────────────── 스킬 ───────────────────────────
 
@@ -70,6 +73,28 @@ public class AgentController {
 		return ResponseEntity.ok(DataResponse.from(taskService.createFromRequest(memberId, request)));
 	}
 
+	/**
+	 * 걸어 둔 지시(정리본)·제목을 고친다. mode=REPLACE(기본)는 통째로 바꾸고, APPEND 는 기존 정리본 뒤에 추가 지시로 덧붙인다.
+	 * 실전 계좌에서 자율 주문하는 작업은 이메일 인증번호를 한 번 더 확인한다. 이전 내용은 이력으로 남는다.
+	 */
+	@PatchMapping("/agent/tasks/{id}")
+	public ResponseEntity<DataResponse<AgentTaskDto>> update(
+		@AuthenticationPrincipal Long memberId,
+		@PathVariable Long id,
+		@RequestBody UpdateTaskRequest request,
+		jakarta.servlet.http.HttpServletRequest http
+	) {
+		AgentTask t = taskService.requireRevisable(memberId, id);
+		var account = accountService.requireOwned(memberId, t.getAccountId());
+		if (t.isAutonomous() && !account.isPaper()) {
+			stepUp.require(memberId);
+		}
+		String merged = request.instruction() == null || request.instruction().isBlank() ? t.getInstruction()
+			: taskService.mergedInstruction(t, request.instruction(), request.mode());
+		AgentTaskDto dto = taskService.applyRevision(memberId, id, request.title(), merged, "USER");
+		audit.record(com.backend.common.security.audit.SecurityAudit.AGENT_EDITED, memberId, null, http.getRemoteAddr(), "task=" + id);
+		return ResponseEntity.ok(DataResponse.from(dto));
+	}
 	@GetMapping("/agent/tasks/{id}")
 	public ResponseEntity<DataResponse<AgentTaskDetail>> detail(@AuthenticationPrincipal Long memberId, @PathVariable Long id) {
 		return ResponseEntity.ok(DataResponse.from(taskService.detail(memberId, id)));

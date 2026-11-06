@@ -100,7 +100,9 @@ public class PredictionClient {
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	public record BatchItemOut(
 		String symbol, String name, String market, String currency, String tradeDate, double currentPrice, double score,
-		double predictedChangeRate, String direction, double confidence, List<String> reasons, double avgTradeValue
+		double predictedChangeRate, String direction, double confidence, List<String> reasons, double avgTradeValue,
+		/** 순위에 쓴 사실들(변동성·RSI·수익률 등). 예전 서버가 응답하면 비어 있다. */
+		Map<String, Double> facts
 	) {
 	}
 

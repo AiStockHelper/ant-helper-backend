@@ -65,4 +65,44 @@ class ScreeningServiceTest {
 		assertThat(ScreeningService.normalizeGroup(null)).isEqualTo("KRX");
 		assertThat(ScreeningService.normalizeGroup("KOSPI")).isEqualTo("KRX");
 	}
+
+	// ─────────────────────────── 시장 개요(market_scan) / 모델 추천 ───────────────────────────
+
+	private static DailyScreen row(String sym, double tradeValue, double score, String facts) {
+		return new DailyScreen(java.time.LocalDate.now(), "KRX", Market.KRX, sym, sym, new java.math.BigDecimal("10000"), score, 0.5,
+			"UP", 60, "[]", tradeValue, facts);
+	}
+
+	@Test
+	void scanSortsByRequestedFactAndNeverExposesModelOutput() {
+		DailyScreenRepository repo = mock(DailyScreenRepository.class);
+		when(repo.latestTradeDate("KRX")).thenReturn(java.util.Optional.of(java.time.LocalDate.now()));
+		when(repo.findByMarketGroupAndTradeDateOrderByAvgTradeValueDesc(eq("KRX"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+			.thenReturn(List.of(
+				row("AAA", 5e10, 80, "{\"vol20\":3.0,\"rsi\":70,\"ret5\":6.0}"),
+				row("BBB", 4e10, 10, "{\"vol20\":1.0,\"rsi\":35,\"ret5\":-4.0}"),
+				row("CCC", 3e10, -20, "{\"vol20\":2.0,\"rsi\":50,\"ret5\":0.5}"),
+				row("DDD", 2e10, 0, "{}")));
+		ScreeningService svc = new ScreeningService(mock(PredictionClient.class), mock(StockMasterRepository.class), repo,
+			new AppProperties(), null, new com.backend.common.util.Json(new com.fasterxml.jackson.databind.ObjectMapper()), null);
+
+		assertThat(svc.scan("KRX", ScreeningService.ScanView.STABLE, 10)).extracting(ScreeningService.ScanRow::productNumber)
+			.containsExactly("BBB", "CCC", "AAA");
+		assertThat(svc.scan("KRX", ScreeningService.ScanView.OVERSOLD, 2)).extracting(ScreeningService.ScanRow::productNumber)
+			.containsExactly("BBB", "CCC");
+		assertThat(svc.scan("KRX", ScreeningService.ScanView.RALLY, 1)).extracting(ScreeningService.ScanRow::productNumber)
+			.containsExactly("AAA");
+		assertThat(svc.scan("KRX", ScreeningService.ScanView.LIQUID, 10)).extracting(ScreeningService.ScanRow::productNumber)
+			.containsExactly("AAA", "BBB", "CCC", "DDD");
+		// ScanRow 에는 모델 점수·방향 필드 자체가 없다.
+		assertThat(ScreeningService.ScanRow.class.getRecordComponents()).extracting(c -> c.getName())
+			.doesNotContain("score", "direction", "confidence", "predictedChangeRate");
+	}
+
+	@Test
+	void unknownViewFallsBackToLiquid() {
+		assertThat(ScreeningService.ScanView.parse("nope")).isEqualTo(ScreeningService.ScanView.LIQUID);
+		assertThat(ScreeningService.ScanView.parse("dip")).isEqualTo(ScreeningService.ScanView.DIP);
+		assertThat(ScreeningService.ScanView.parse(null)).isEqualTo(ScreeningService.ScanView.LIQUID);
+	}
 }

@@ -83,6 +83,17 @@ public class ActionService {
 			planner.details(account, plan), payload);
 	}
 
+	private static String clip(String s, int max) {
+		if (s == null) {
+			return "";
+		}
+		return s.length() > max ? s.substring(0, max) + "…" : s;
+	}
+
+	/**
+	 * 자동매매(주문하는 자동 실행) 시작 확인 카드. instruction 은 AI 가 정리한 '정리본'이며, 사용자가 이 카드를 승인하면
+	 * 그대로 저장되어 실행 때마다 AI 가 읽는다. 모의 계좌도 실제 주문 흐름과 같게 반드시 승인을 거친다.
+	 */
 	public Action createAgentTaskAction(MemberAccount account, Long conversationId, Long messageId, String title,
 		String instruction, Schedule schedule, Limits limits) {
 		Map<String, Object> payload = new LinkedHashMap<>();
@@ -91,8 +102,9 @@ public class ActionService {
 		payload.put("schedule", schedule);
 		payload.put("limits", limits);
 		payload.put("autonomous", true);
+		boolean paper = account.isPaper();
 		List<Detail> details = new java.util.ArrayList<>();
-		details.add(new Detail("계좌", account.displayName() + " (" + (account.isPaper() ? "모의" : "실전") + ")"));
+		details.add(new Detail("계좌", account.displayName() + " (" + (paper ? "모의" : "실전") + ")"));
 		details.add(new Detail("실행 일정", schedule.describe()));
 		details.add(new Detail("자율 주문", "허용 — 승인하면 이후에는 사람 확인 없이 AI가 한도 안에서 직접 주문합니다"));
 		if (limits != null) {
@@ -102,16 +114,40 @@ public class ActionService {
 			details.add(new Detail("하루 매수 한도", cur.format(limits.dailyBuyCap())));
 			details.add(new Detail("누적 손실 한도", cur.format(limits.lossLimitAmount()) + " (넘으면 신규 매수 중단)"));
 		}
-		details.add(new Detail("지시 내용", instruction.length() > 400 ? instruction.substring(0, 400) + "…" : instruction));
-		details.add(new Detail("안전장치", "1회 주문 한도 적용 · 이 작업이 산 종목만 매도 · 언제든 일시정지/중지 가능"));
-		String summary = "승인하면 '" + schedule.describe() + "' 일정으로 AI가 지시를 수행합니다. 실전 계좌의 실제 자금이 사용됩니다.";
+		details.add(new Detail("정리본(AI가 실행 때마다 읽는 지시)", clip(instruction, 3000)));
+		details.add(new Detail("안전장치", "1회 주문 한도 적용 · 이 작업이 산 종목만 매도 · 언제든 일시정지/중지 가능 · 승인 후에도 '자동화' 화면에서 정리본을 수정·추가할 수 있음"));
+		String summary = "승인하면 '" + schedule.describe() + "' 일정으로 AI가 위 정리본대로 실행하고, 이 정리본이 그대로 저장됩니다."
+			+ (paper ? " 모의 계좌라 실제 돈은 쓰이지 않습니다." : " 실전 계좌의 실제 자금이 사용됩니다.");
 		return create(account, conversationId, messageId, ChatAction.Kind.AGENT_TASK, title, summary, details, payload);
+	}
+
+	/** 이미 걸어 둔 자동매매의 정리본을 바꾸는 확인 카드(변경 전후 비교). */
+	public Action createAgentTaskUpdateAction(MemberAccount account, Long conversationId, Long messageId, AgentTask task,
+		String newTitle, String newInstruction) {
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("taskId", task.getId());
+		payload.put("title", newTitle == null || newTitle.isBlank() ? task.getTitle() : newTitle);
+		payload.put("instruction", newInstruction);
+		List<Detail> details = new java.util.ArrayList<>();
+		details.add(new Detail("작업", "#" + task.getId() + " " + task.getTitle()));
+		details.add(new Detail("계좌", account.displayName() + " (" + (account.isPaper() ? "모의" : "실전") + ")"));
+		details.add(new Detail("현재 정리본", clip(task.getInstruction(), 1500)));
+		details.add(new Detail("변경 후 정리본", clip(newInstruction, 2500)));
+		details.add(new Detail("적용 시점", "승인하면 다음 실행부터 새 정리본대로 동작합니다. 이전 내용은 이력으로 남습니다."));
+		String summary = "자동 실행 '" + task.getTitle() + "'의 정리본을 위 내용으로 바꿉니다. 예산·한도·일정은 그대로입니다.";
+		return create(account, conversationId, messageId, ChatAction.Kind.AGENT_TASK_UPDATE, "정리본 수정: " + task.getTitle(),
+			summary, details, payload);
 	}
 	private Action create(MemberAccount account, Long conversationId, Long messageId, ChatAction.Kind kind, String title,
 		String summary, List<Detail> details, Map<String, Object> payload) {
 		LocalDateTime expires = LocalDateTime.now().plusMinutes(props.getTrading().getActionTtlMinutes());
-		ChatAction saved = tx.execute(s -> actions.save(new ChatAction(account.getMemberId(), conversationId, messageId,
-			account.getId(), kind, title, summary, json.write(details), json.write(payload), expires)));
+		ChatAction saved = tx.execute(s -> {
+			if (conversationId != null && (kind == ChatAction.Kind.AGENT_TASK || kind == ChatAction.Kind.AGENT_TASK_UPDATE)) {
+				actions.expirePendingOfKind(conversationId, kind);
+			}
+			return actions.save(new ChatAction(account.getMemberId(), conversationId, messageId,
+			account.getId(), kind, title, summary, json.write(details), json.write(payload), expires));
+		});
 		log.info("확인 카드 생성 actionId={} member={} account={} kind={} title={}", saved.getId(), account.getMemberId(),
 			account.getId(), kind, title);
 		return mapper.action(saved, account);
@@ -145,7 +181,7 @@ public class ActionService {
 			return mapper.action(require(memberId, id));
 		}
 		if (a.getStatus() == ChatAction.Status.PENDING && a.getAccountId() != null
-			&& (a.getKind() == ChatAction.Kind.ORDER || a.getKind() == ChatAction.Kind.AGENT_TASK)
+			&& (a.getKind() == ChatAction.Kind.ORDER || a.getKind() == ChatAction.Kind.AGENT_TASK || a.getKind() == ChatAction.Kind.AGENT_TASK_UPDATE)
 			&& !accountService.requireOwned(memberId, a.getAccountId()).isPaper()) {
 			// 실계좌 주문·자동매매 승인은 이메일 인증번호를 한 번 더 확인한 뒤에만 진행한다(승인 카드는 그대로 남는다).
 			stepUp.require(memberId);
@@ -164,6 +200,7 @@ public class ActionService {
 			result = switch (a.getKind()) {
 				case ORDER -> executeOrder(account, a, payload);
 				case AGENT_TASK -> registerAgentTask(account, a, payload);
+				case AGENT_TASK_UPDATE -> updateAgentTask(memberId, payload);
 				case SCHEDULED_ORDER, SCHEDULED_RECOMMEND_BUY -> new ActionResult(false,
 					"이 방식의 예약은 더 이상 지원하지 않습니다. 같은 내용을 다시 요청해 주세요.", null);
 			};
@@ -221,6 +258,13 @@ public class ActionService {
 		AgentTask t = agentTaskService.createFromApproval(account, a.getConversationId(), payload);
 		return new ActionResult(true, "자동 실행이 시작되었습니다. (작업 번호 " + t.getId() + ") 결과는 이 대화와 '내 계좌 > 자동화'에서 확인하고, 언제든 일시정지·중지할 수 있습니다.",
 			String.valueOf(t.getId()));
+	}
+	private ActionResult updateAgentTask(Long memberId, Map<String, Object> payload) {
+		Long taskId = ((Number)payload.get("taskId")).longValue();
+		var dto = agentTaskService.applyRevision(memberId, taskId, String.valueOf(payload.get("title")),
+			String.valueOf(payload.get("instruction")), "CHAT");
+		return new ActionResult(true, "정리본을 수정했습니다. 다음 실행부터 새 내용으로 동작하고, 이전 내용은 '자동화' 화면의 이력에서 볼 수 있습니다. (작업 번호 " + dto.id() + ")",
+			String.valueOf(dto.id()));
 	}
 	private ChatAction require(Long memberId, Long id) {
 		return actions.findByIdAndMemberId(id, memberId).orElseThrow(() -> ApiException.from(ErrorCode.ACTION_NOT_FOUND));

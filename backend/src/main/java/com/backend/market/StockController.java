@@ -32,6 +32,7 @@ public class StockController {
 	private final MarketDataService marketData;
 	private final PredictionService predictionService;
 	private final AccountService accountService;
+	private final ExchangeRateService exchangeRates;
 
 	@GetMapping("/search")
 	public ResponseEntity<DataResponse<List<StockSummary>>> search(
@@ -75,6 +76,21 @@ public class StockController {
 		return ResponseEntity.ok(DataResponse.from(predictionService.predict(account, s.market(), s.productNumber())));
 	}
 
+	/** 1달러가 몇 원인지(화면에서 달러 금액을 원화로 환산해 볼 때 쓴다). 구하지 못하면 usdKrw 가 null. */
+	@GetMapping("/exchange-rate")
+	public ResponseEntity<DataResponse<java.util.Map<String, Object>>> exchangeRate(
+		@AuthenticationPrincipal Long memberId,
+		@RequestParam(required = false) Long accountId
+	) {
+		MemberAccount account = accountId == null ? null : accountService.resolve(memberId, accountId);
+		var rate = exchangeRates.current(account);
+		java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+		body.put("usdKrw", rate.map(ExchangeRateService.Rate::usdKrw).orElse(null));
+		body.put("source", rate.map(ExchangeRateService.Rate::source).orElse(null));
+		body.put("asOf", rate.map(ExchangeRateService.Rate::asOf).orElse(null));
+		return ResponseEntity.ok(DataResponse.from(body));
+	}
+
 	@GetMapping("/recommendations")
 	public ResponseEntity<DataResponse<List<Recommendation>>> recommendations(
 		@AuthenticationPrincipal Long memberId,
@@ -83,7 +99,7 @@ public class StockController {
 		@RequestParam(defaultValue = "5") int size
 	) {
 		MemberAccount account = accountService.resolve(memberId, accountId);
-		return ResponseEntity.ok(DataResponse.from(predictionService.recommend(account, market, size)));
+		return ResponseEntity.ok(DataResponse.from(predictionService.modelPicks(account, market, size)));
 	}
 
 	private Market parse(String market) {

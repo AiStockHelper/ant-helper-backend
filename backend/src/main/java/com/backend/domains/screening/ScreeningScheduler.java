@@ -49,7 +49,7 @@ public class ScreeningScheduler {
 
 	@EventListener(ApplicationReadyEvent.class)
 	public void onReady() {
-		if (!props.getScreening().isEnabled() || !props.getScreening().isRunOnStartupIfEmpty()) {
+		if (!props.getScreening().isEnabled()) {
 			return;
 		}
 		Thread.ofVirtual().name("screening-startup").start(() -> {
@@ -60,7 +60,9 @@ public class ScreeningScheduler {
 				return;
 			}
 			for (String g : new String[] {ScreeningService.KRX, ScreeningService.US}) {
-				if (!screening.hasAny(g)) {
+				// 처음 배포(데이터 없음)이거나, 예전 방식으로 저장된 결과(순위 근거 값이 없음)라서 새 방식으로 다시 분석해야 할 때만 돈다.
+				boolean empty = !screening.hasAny(g);
+				if ((empty && props.getScreening().isRunOnStartupIfEmpty()) || (!empty && !screening.hasFacts(g))) {
 					screening.runBlocking(g);
 				}
 			}

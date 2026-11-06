@@ -27,6 +27,12 @@ public interface ChatActionRepository extends JpaRepository<ChatAction, Long> {
 		+ "where a.id = :id and a.status = com.backend.domains.chat.entity.ChatAction.Status.PENDING")
 	int claim(@Param("id") Long id);
 
+	/** 같은 대화에서 새 확인 카드를 만들면 같은 종류의 예전 대기 카드는 더 이상 승인할 수 없게 한다(정리본을 고쳐 다시 제안한 경우). */
+	@Modifying
+	@Query("update ChatAction a set a.status = com.backend.domains.chat.entity.ChatAction.Status.EXPIRED "
+		+ "where a.conversationId = :conversationId and a.kind = :kind and a.status = com.backend.domains.chat.entity.ChatAction.Status.PENDING")
+	int expirePendingOfKind(@Param("conversationId") Long conversationId, @Param("kind") ChatAction.Kind kind);
+
 	@Modifying
 	@Query("delete from ChatAction a where a.conversationId = :conversationId")
 	void deleteByConversation(@Param("conversationId") Long conversationId);

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -216,7 +217,7 @@ public class AgentTaskService {
 		List<PositionDto> positions = trading.allPositions(t).stream().map(this::positionDto).toList();
 		List<TradeDto> trades = trading.recentTrades(t).stream().map(this::tradeDto).toList();
 		List<RunDto> runDtos = runs.findTop20ByTaskIdOrderByIdDesc(t.getId()).stream().map(this::runDto).toList();
-		return new AgentTaskDetail(toDto(t), positions, trades, runDtos, t.getMemory());
+		return new AgentTaskDetail(toDto(t), positions, trades, runDtos, t.getMemory(), revisionsOf(t));
 	}
 
 	public AgentTask require(Long memberId, Long id) {
@@ -259,6 +260,70 @@ public class AgentTaskService {
 		return toDto(t);
 	}
 
+	// ─────────────────────────── 지시(정리본) 수정 ───────────────────────────
+
+	public static final int MAX_INSTRUCTION = 4000;
+	private static final int MAX_REVISIONS = 20;
+
+	public record Revision(String at, String by, String title, String instruction) {
+	}
+
+	/** REPLACE 면 새 내용으로 통째로 바꾸고, APPEND 면 기존 정리본 뒤에 '추가 지시'로 덧붙인 결과를 돌려준다(저장은 하지 않는다). */
+	public String mergedInstruction(AgentTask t, String text, String mode) {
+		return merge(t.getInstruction(), text, mode);
+	}
+
+	static String merge(String existing, String text, String mode) {
+		String incoming = text == null ? "" : text.trim();
+		if (incoming.isEmpty()) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "바꿀 내용이 비어 있습니다.");
+		}
+		String merged = "APPEND".equalsIgnoreCase(mode)
+			? (existing == null ? "" : existing.trim()) + "\n\n[추가 지시 " + java.time.LocalDate.now(TimeUtil.SEOUL) + "]\n" + incoming
+			: incoming;
+		if (merged.length() > MAX_INSTRUCTION) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "지시 내용은 " + MAX_INSTRUCTION + "자 이하여야 합니다(현재 " + merged.length() + "자).");
+		}
+		return merged;
+	}
+	/** 수정할 수 있는 작업인지 확인한다(스킬로 만든 작업·끝난 작업은 제외). */
+	public AgentTask requireRevisable(Long memberId, Long id) {
+		AgentTask t = require(memberId, id);
+		if (t.getSkillId() != null) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "스킬로 켠 작업은 지시문이 없습니다. 스킬 화면에서 설정을 바꿔 주세요.");
+		}
+		if (t.getStatus() == AgentTask.Status.CANCELED || t.getStatus() == AgentTask.Status.DONE) {
+			throw ApiException.of(ErrorCode.AGENT_STATE_CONFLICT, "이미 끝났거나 중지된 작업은 수정할 수 없습니다.");
+		}
+		return t;
+	}
+
+	/** 지시(정리본)와 제목을 바꾸고 이전 내용을 이력에 남긴다. 승인·추가 인증은 호출한 쪽이 확인한 뒤에 부른다. */
+	@Transactional
+	public AgentTaskDto applyRevision(Long memberId, Long id, String newTitle, String newInstruction, String by) {
+		AgentTask t = requireRevisable(memberId, id);
+		if (newInstruction == null || newInstruction.isBlank() || newInstruction.length() > MAX_INSTRUCTION) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "지시 내용은 비어 있지 않고 " + MAX_INSTRUCTION + "자 이하여야 합니다.");
+		}
+		List<Revision> history = new java.util.ArrayList<>(json.read(t.getInstructionHistory(), new TypeReference<List<Revision>>() {}, List.of()));
+		history.add(new Revision(OffsetDateTime.now(TimeUtil.SEOUL).toString(), by, t.getTitle(), t.getInstruction()));
+		while (history.size() > MAX_REVISIONS) {
+			history.remove(0);
+		}
+		t.revise(newTitle, newInstruction.trim(), json.write(history));
+		log.info("자동 실행 지시 수정 task={} member={} by={} 길이={}", id, memberId, by, newInstruction.length());
+		return toDto(t);
+	}
+
+	public List<AgentDtos.RevisionDto> revisionsOf(AgentTask t) {
+		List<Revision> history = json.read(t.getInstructionHistory(), new TypeReference<List<Revision>>() {}, List.of());
+		List<AgentDtos.RevisionDto> out = new java.util.ArrayList<>();
+		for (int i = history.size() - 1; i >= 0; i--) {
+			Revision r = history.get(i);
+			out.add(new AgentDtos.RevisionDto(r.at(), r.by(), r.title(), r.instruction()));
+		}
+		return out;
+	}
 	/** 중지. 이 작업이 관리하던 보유 종목은 계좌에 그대로 남고 더 이상 자동 관리되지 않는다. */
 	@Transactional
 	public AgentTaskDto cancel(Long memberId, Long id) {

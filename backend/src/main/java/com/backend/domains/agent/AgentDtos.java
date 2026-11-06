@@ -50,8 +50,16 @@ public final class AgentDtos {
 	}
 
 	public record AgentTaskDetail(
-		AgentTaskDto task, List<PositionDto> positions, List<TradeDto> trades, List<RunDto> runs, String memory
+		AgentTaskDto task, List<PositionDto> positions, List<TradeDto> trades, List<RunDto> runs, String memory,
+		List<RevisionDto> revisions
 	) {
+	}
+
+	/** 지시(정리본)를 고치기 전의 모습 */
+	public record RevisionDto(String at, String by, String title, String instruction) {
+	}
+
+	public record UpdateTaskRequest(String title, String instruction, String mode) {
 	}
 
 	public record CreateTaskRequest(

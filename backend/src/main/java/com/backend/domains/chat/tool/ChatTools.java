@@ -70,6 +70,7 @@ public class ChatTools {
 	private final SkillRegistry skills;
 	private final ScreeningService screening;
 	private final com.backend.domains.chat.memory.ChatHistorySearchService historySearch;
+	private final com.backend.domains.account.AccountService accounts;
 
 	// ─────────────────────────── 시세 ───────────────────────────
 
@@ -497,24 +498,68 @@ public class ChatTools {
 		}
 		String planText = schedule.describe();
 
-		if (account.isPaper() || !wantsAutonomy) {
+		if (!wantsAutonomy) {
 			AgentTask t = agentTasks.create(new AgentTaskService.CreateSpec(account, s.conversationId(), null, title, instruction,
 				null, schedule, limits, wantsAutonomy, null, AgentTask.CreatedBy.USER));
 			s.card("agent_tasks", List.of(agentTasks.toDto(t)));
 			s.summary("자동 실행 등록: " + planText);
 			return map("status", "SCHEDULED", "taskId", t.getId(), "schedule", planText,
 				"account", account.isPaper() ? "모의 계좌" : "실전 계좌",
-				"note", "해당 일정에 서버가 AI를 깨워 작업을 수행하고, 결과를 이 대화에 남깁니다."
-					+ (account.isPaper() ? "" : " 이 작업은 사용자 확인 없이 주문할 수 없습니다(조회·보고만 가능)."));
-		}
-		Action action = actionService.createAgentTaskAction(account, s.conversationId(), s.assistantMessageId(), title,
+				"note", "해당 시점에 정해진 AI가 지시 작업을 수행하고, 결과를 이 대화에 남깁니다. 이 작업은 주문하지 않으며 조회·보고만 합니다. 지시는 '자동화' 화면이나 update_agent_task 로 고칠 수 있습니다.");
+		}		Action action = actionService.createAgentTaskAction(account, s.conversationId(), s.assistantMessageId(), title,
 			instruction, schedule, limits);
 		s.action(action);
 		s.summary("확인 카드 생성: " + title);
-		return map("status", "PENDING_USER_APPROVAL", "schedule", planText, "account", "실전 계좌",
+		return map("status", "PENDING_USER_APPROVAL", "schedule", planText, "account", account.isPaper() ? "모의 계좌" : "실전 계좌",
 			"message", "자동 실행은 아직 등록되지 않았습니다. 사용자가 확인 카드에서 승인해야 시작됩니다. 승인 전에는 등록되었다고 말하지 마세요.");
 	}
 
+	@Tool(name = "get_agent_task", description = "걸어 둔 자동 실행 한 건의 현재 '정리본'(지시 전문)과 일정·한도·최근 결과를 가져옵니다. 정리본을 고치기 전에 반드시 먼저 불러서 현재 내용을 확인하세요.")
+	public Object getAgentTask(@ToolParam(description = "작업 번호(taskId)") Long taskId, ToolContext ctx) {
+		ChatSession s = session(ctx);
+		AgentTask t = agentTasks.require(s.memberId(), taskId);
+		AgentTaskDto dto = agentTasks.toDto(t);
+		s.card("agent_tasks", List.of(dto));
+		s.summary("작업 " + taskId + " 조회");
+		return map("taskId", t.getId(), "title", t.getTitle(), "status", dto.status(), "autonomous", t.isAutonomous(),
+			"placesOrders", t.isAutonomous(), "schedule", dto.scheduleLabel(), "instruction", t.getInstruction(),
+			"limits", dto.ledger() == null ? null : map("budget", dto.ledger().budget(), "maxPositionPct", dto.ledger().maxPositionPct(),
+				"maxLossPct", dto.ledger().maxLossPct(), "maxDailyBuy", dto.ledger().maxDailyBuy()),
+			"lastResult", dto.lastResult(), "fromSkill", t.getSkillId() != null);
+	}
+
+	@Tool(name = "update_agent_task", description = "걸어 둔 자동 실행의 정리본(지시)이나 제목을 고치거나 내용을 추가합니다. 일정·예산·한도는 바꾸지 않습니다(그것들은 새로 걸어야 합니다). "
+		+ "mode=APPEND 는 기존 정리본 뒤에 '추가 지시'로 instruction 을 덧붙이고, mode=REPLACE 는 instruction 을 새 정리본 전체로 바꿉니다(이때는 get_agent_task 로 읽은 현재 정리본을 바탕으로 고친 전체를 쓰세요). "
+		+ "주문하는(autonomous) 작업은 사용자가 변경 전후를 보는 확인 카드에서 승인해야 적용되고, 주문하지 않는 작업은 바로 적용됩니다. 승인 전에는 바뀌었다고 말하지 마세요.")
+	public Object updateAgentTask(
+		@ToolParam(description = "대상 작업 번호(taskId)") Long taskId,
+		@ToolParam(description = "새 instruction. REPLACE 면 정리본 전체, APPEND 면 덧붙일 내용만", required = false) String instruction,
+		@ToolParam(description = "REPLACE(기본) 또는 APPEND", required = false) String mode,
+		@ToolParam(description = "새 제목. 안 바꾸면 생략", required = false) String title,
+		ToolContext ctx
+	) {
+		ChatSession s = session(ctx);
+		if (s.agentTaskId() != null) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "자동 실행 중에는 작업 지시를 고칠 수 없습니다.");
+		}
+		AgentTask t = agentTasks.requireRevisable(s.memberId(), taskId);
+		MemberAccount account = accounts.requireOwned(s.memberId(), t.getAccountId());
+		String merged = instruction == null || instruction.isBlank() ? t.getInstruction() : agentTasks.mergedInstruction(t, instruction, mode);
+		if (merged != null && merged.equals(t.getInstruction()) && (title == null || title.isBlank() || title.equals(t.getTitle()))) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "바뀌는 내용이 없습니다.");
+		}
+		if (!t.isAutonomous()) {
+			AgentTaskDto dto = agentTasks.applyRevision(s.memberId(), taskId, title, merged, "CHAT");
+			s.card("agent_tasks", List.of(dto));
+			s.summary("작업 " + taskId + " 지시 수정");
+			return map("status", "UPDATED", "taskId", taskId, "note", "주문하지 않는 작업이라 바로 적용했습니다. 다음 실행부터 새 지시로 동작합니다.");
+		}
+		Action action = actionService.createAgentTaskUpdateAction(account, s.conversationId(), s.assistantMessageId(), t, title, merged);
+		s.action(action);
+		s.summary("정리본 수정 확인 카드: " + t.getTitle());
+		return map("status", "PENDING_USER_APPROVAL", "taskId", taskId,
+			"message", "아직 바뀌지 않았습니다. 변경 전후가 담긴 확인 카드에서 사용자가 승인해야 적용됩니다. 승인 전에는 수정되었다고 말하지 마세요.");
+	}
 	@Tool(name = "list_agent_tasks", description = "현재 계좌에 등록된 자동 실행(예약·반복) 작업 목록을 조회합니다.")
 	public Object listAgentTasks(ToolContext ctx) {
 		ChatSession s = session(ctx);

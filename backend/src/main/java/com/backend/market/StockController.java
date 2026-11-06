@@ -83,7 +83,7 @@ public class StockController {
 		@RequestParam(defaultValue = "5") int size
 	) {
 		MemberAccount account = accountService.resolve(memberId, accountId);
-		return ResponseEntity.ok(DataResponse.from(predictionService.recommend(account, market, size)));
+		return ResponseEntity.ok(DataResponse.from(predictionService.modelPicks(account, market, size)));
 	}
 
 	private Market parse(String market) {

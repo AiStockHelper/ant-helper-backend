@@ -180,7 +180,8 @@ public class ScreeningService {
 			}
 			BigDecimal price = m.currency().round(BigDecimal.valueOf(i.currentPrice()));
 			rows.add(new DailyScreen(date, group, m, i.symbol(), i.name(), price, i.score(), i.predictedChangeRate(),
-				i.direction(), i.confidence(), json.write(i.reasons() == null ? List.of() : i.reasons()), i.avgTradeValue()));
+				i.direction(), i.confidence(), json.write(i.reasons() == null ? List.of() : i.reasons()), i.avgTradeValue(),
+				i.facts() == null || i.facts().isEmpty() ? null : json.write(i.facts())));
 		}
 		tx.executeWithoutResult(s -> {
 			repo.deleteDay(group, date);
@@ -207,10 +208,88 @@ public class ScreeningService {
 			.map(this::toRecommendation).toList()).orElse(List.of());
 	}
 
-	/** 방향과 상관없이 점수가 높은 순 — AI 의견을 만들 때 참고하는 후보 풀 */
-	public List<Recommendation> topByScore(String group, int size) {
-		return freshDate(group).map(d -> repo.findByMarketGroupAndTradeDateOrderByScoreDesc(group, d, PageRequest.of(0, size))
-			.stream().map(this::toRecommendation).toList()).orElse(List.of());
+	/** 모델 추천: 요인 점수가 평균보다 확실히 높은 종목(점수순). 모델의 방향 예측은 참고값일 뿐 조건이 아니다. */
+	public List<Recommendation> picks(String group, int size) {
+		return freshDate(group).map(d -> repo.findPicks(group, d, MIN_PICK_SCORE, PageRequest.of(0, size)).stream()
+			.map(this::toRecommendation).toList()).orElse(List.of());
+	}
+
+	public static final double MIN_PICK_SCORE = 10.0;
+
+	/** AI 가 직접 훑어보는 시장 개요의 한 줄. 모델 점수·방향은 일부러 넣지 않는다. */
+	public record ScanRow(String productNumber, String name, Market market, Currency currency, BigDecimal price,
+						  double avgTradeValue, Map<String, Double> facts) {
+	}
+
+	public enum ScanView {
+		LIQUID("거래대금이 큰 순"),
+		STABLE("20일 변동성이 낮은 순"),
+		VOLATILE("20일 변동성이 높은 순"),
+		OVERSOLD("RSI가 낮은(과매도) 순"),
+		OVERBOUGHT("RSI가 높은(과열) 순"),
+		DIP("최근 5일 수익률이 낮은(눌린) 순"),
+		RALLY("최근 5일 수익률이 높은 순"),
+		MOMENTUM("60일 수익률이 높은 순"),
+		VOLUME_SURGE("거래량이 5일 평균보다 급증한 순"),
+		NEAR_HIGH("60일 고점에 가까운 순");
+
+		private final String label;
+
+		ScanView(String label) {
+			this.label = label;
+		}
+
+		public String label() {
+			return label;
+		}
+
+		public static ScanView parse(String v) {
+			if (v == null || v.isBlank()) {
+				return LIQUID;
+			}
+			try {
+				return valueOf(v.trim().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				return LIQUID;
+			}
+		}
+	}
+
+	/**
+	 * 거래대금 상위 종목(추천 대상과 같은 범위)을 요인 값으로 정렬해 보여 준다.
+	 * 모델 점수는 노출하지 않으므로 AI 는 이 숫자들로 스스로 판단해야 한다.
+	 */
+	public List<ScanRow> scan(String group, ScanView view, int size) {
+		LocalDate date = freshDate(group).orElse(null);
+		if (date == null) {
+			return List.of();
+		}
+		List<ScanRow> pool = repo.findByMarketGroupAndTradeDateOrderByAvgTradeValueDesc(group, date,
+				PageRequest.of(0, props.getScreening().getScanPool())).stream()
+			.map(d -> new ScanRow(d.getSymbol(), d.getName(), d.getMarket(), d.getMarket().currency(), d.getPrice(),
+				d.getAvgTradeValue() == null ? 0 : d.getAvgTradeValue(),
+				json.read(d.getFactsJson(), new TypeReference<Map<String, Double>>() {}, Map.of())))
+			.toList();
+		java.util.Comparator<ScanRow> order = switch (view) {
+			case LIQUID -> java.util.Comparator.comparingDouble(ScanRow::avgTradeValue).reversed();
+			case STABLE -> byFact("vol20", true);
+			case VOLATILE -> byFact("vol20", false);
+			case OVERSOLD -> byFact("rsi", true);
+			case OVERBOUGHT -> byFact("rsi", false);
+			case DIP -> byFact("ret5", true);
+			case RALLY -> byFact("ret5", false);
+			case MOMENTUM -> byFact("mom60", false);
+			case VOLUME_SURGE -> byFact("volRatio", false);
+			case NEAR_HIGH -> byFact("distHigh60", false);
+		};
+		return pool.stream().filter(r -> view == ScanView.LIQUID || !r.facts().isEmpty()).sorted(order)
+			.limit(Math.max(1, Math.min(size, 40))).toList();
+	}
+
+	private static java.util.Comparator<ScanRow> byFact(String key, boolean ascending) {
+		java.util.Comparator<ScanRow> c = java.util.Comparator.comparingDouble(
+			r -> r.facts().getOrDefault(key, ascending ? Double.MAX_VALUE : -Double.MAX_VALUE));
+		return ascending ? c : c.reversed();
 	}
 
 	public Optional<Ranked> lookup(String group, String symbol) {

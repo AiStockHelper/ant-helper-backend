@@ -28,6 +28,7 @@ public class EventingToolCallback implements ToolCallback {
 		Map.entry("predict_stock", "AI 예측"),
 		Map.entry("recommend_stocks", "모델 추천 종목 분석"),
 		Map.entry("show_llm_picks", "AI 의견 정리"),
+		Map.entry("market_scan", "시장 훑어보기"),
 		Map.entry("get_account_summary", "계좌 잔고 조회"),
 		Map.entry("get_order_history", "주문·체결 내역 조회"),
 		Map.entry("place_order", "주문 준비"),

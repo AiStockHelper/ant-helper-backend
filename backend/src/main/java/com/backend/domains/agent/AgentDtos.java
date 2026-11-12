@@ -59,7 +59,32 @@ public final class AgentDtos {
 	public record RevisionDto(String at, String by, String title, String instruction) {
 	}
 
-	public record UpdateTaskRequest(String title, String instruction, String mode) {
+	/**
+	 * 작업 수정 요청. 보낸 항목만 바꾼다(null 은 그대로).
+	 * 스킬로 만든 작업은 config(설정값)로만 바꾼다: 시드·일정·한도가 설정값에서 다시 계산된다.
+	 * 일반 작업은 title·instruction(+mode)과 한도(budget 등)·schedule 을 바꿀 수 있다.
+	 * 실전 계좌의 자율 주문 작업에서 설정·한도·일정을 바꿀 땐 confirmRealTrading=true 가 필요하다.
+	 */
+	public record UpdateTaskRequest(
+		String title, String instruction, String mode,
+		Map<String, Object> config,
+		BigDecimal budget, Double maxPositionPct, Double maxLossPct, BigDecimal maxDailyBuy,
+		Schedule schedule,
+		Boolean confirmRealTrading
+	) {
+		/** 예전 클라이언트(제목·지시문만 보내는) 호환용 */
+		public UpdateTaskRequest(String title, String instruction, String mode) {
+			this(title, instruction, mode, null, null, null, null, null, null, null);
+		}
+
+		public boolean changesLimits() {
+			return budget != null || maxPositionPct != null || maxLossPct != null || maxDailyBuy != null;
+		}
+
+		/** 설정·한도·일정 중 하나라도 바꾸는가(제목·지시문만 바꾸는 요청은 false) */
+		public boolean changesSettings() {
+			return config != null || changesLimits() || schedule != null;
+		}
 	}
 
 	public record CreateTaskRequest(

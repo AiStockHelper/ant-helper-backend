@@ -176,6 +176,27 @@ public class AgentTask {
 		this.instructionHistory = historyJson;
 	}
 
+	/** 제목만 바꾼다. 비어 있으면 무시한다. */
+	public void rename(String newTitle) {
+		if (newTitle != null && !newTitle.isBlank()) {
+			String t = newTitle.trim();
+			this.title = t.length() > 200 ? t.substring(0, 200) : t;
+		}
+	}
+
+	/** 설정·일정·한도를 바꾼다. null 인 값은 그대로 둔다. 상태·장부·실행 이력은 건드리지 않는다. */
+	public void changeSettings(String configJson, String scheduleJson, String limitsJson) {
+		if (configJson != null) {
+			this.configJson = configJson;
+		}
+		if (scheduleJson != null) {
+			this.scheduleJson = scheduleJson;
+		}
+		if (limitsJson != null) {
+			this.limitsJson = limitsJson;
+		}
+	}
+
 	public void saveMemory(String memory) {
 		this.memory = memory;
 	}

@@ -68,6 +68,11 @@ public record Schedule(
 			startOffset, endOffset);
 	}
 
+	/** 평일 장 시작/마감 기준 N분 전후(offset 이 음수면 전). */
+	public static Schedule marketEvent(String market, String event, int offsetMinutes) {
+		return new Schedule(Type.MARKET_EVENT, null, null, WEEKDAYS, null, market, event, offsetMinutes, null, null, null);
+	}
+
 	/** "WEEKDAYS", "EVERYDAY", "MON,WED", "월,수,금" 같은 입력을 요일 목록으로. 비어 있거나 매일이면 null(=매일). */
 	public static List<String> parseDays(String text) {
 		if (text == null || text.isBlank()) {

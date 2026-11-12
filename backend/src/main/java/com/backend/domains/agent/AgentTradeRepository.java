@@ -16,5 +16,9 @@ public interface AgentTradeRepository extends JpaRepository<AgentTrade, Long> {
 		+ "and t.createdAt >= :since")
 	BigDecimal boughtSince(@Param("ledgerId") Long ledgerId, @Param("since") Instant since);
 
+	/** 이 장부가 기록한 주문(앱이 낸 주문)의 (주문시각, 주문번호). 앱 밖 주문을 가려낼 때 쓴다. */
+	@Query("select t from AgentTrade t where t.ledgerId = :ledgerId and t.orderNo is not null")
+	List<AgentTrade> withOrderNo(@Param("ledgerId") Long ledgerId);
+
 	void deleteAllByMemberId(Long memberId);
 }

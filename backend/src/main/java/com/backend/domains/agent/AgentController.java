@@ -35,6 +35,7 @@ public class AgentController {
 
 	private final AgentTaskService taskService;
 	private final AgentRunService runService;
+	private final LedgerSyncService syncService;
 	private final SkillRegistry registry;
 	private final AgentTradingService trading;
 	private final com.backend.domains.account.AccountService accountService;
@@ -98,6 +99,17 @@ public class AgentController {
 	@GetMapping("/agent/tasks/{id}")
 	public ResponseEntity<DataResponse<AgentTaskDetail>> detail(@AuthenticationPrincipal Long memberId, @PathVariable Long id) {
 		return ResponseEntity.ok(DataResponse.from(taskService.detail(memberId, id)));
+	}
+
+	/** 한국투자증권 앱 등 앱 밖에서 직접 매매한 것을 내 모든 자동 실행 장부에 지금 반영한다. */
+	@PostMapping("/agent/sync")
+	public ResponseEntity<DataResponse<LedgerSyncService.Result>> syncAll(@AuthenticationPrincipal Long memberId) {
+		return ResponseEntity.ok(DataResponse.from(syncService.syncMember(memberId)));
+	}
+
+	@PostMapping("/agent/tasks/{id}/sync")
+	public ResponseEntity<DataResponse<LedgerSyncService.Result>> syncOne(@AuthenticationPrincipal Long memberId, @PathVariable Long id) {
+		return ResponseEntity.ok(DataResponse.from(syncService.syncTask(memberId, id)));
 	}
 
 	@PostMapping("/agent/tasks/{id}/pause")

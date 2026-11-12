@@ -84,15 +84,15 @@ public class AgentController {
 		@RequestBody UpdateTaskRequest request,
 		jakarta.servlet.http.HttpServletRequest http
 	) {
-		AgentTask t = taskService.requireRevisable(memberId, id);
+		AgentTask t = taskService.requireEditable(memberId, id, request);
 		var account = accountService.requireOwned(memberId, t.getAccountId());
-		if (t.isAutonomous() && !account.isPaper()) {
+		boolean realAutonomous = t.isAutonomous() && !account.isPaper();
+		if (realAutonomous) {
 			stepUp.require(memberId);
 		}
-		String merged = request.instruction() == null || request.instruction().isBlank() ? t.getInstruction()
-			: taskService.mergedInstruction(t, request.instruction(), request.mode());
-		AgentTaskDto dto = taskService.applyRevision(memberId, id, request.title(), merged, "USER");
-		audit.record(com.backend.common.security.audit.SecurityAudit.AGENT_EDITED, memberId, null, http.getRemoteAddr(), "task=" + id);
+		AgentTaskDto dto = taskService.applyEdit(memberId, id, request, realAutonomous);
+		audit.record(com.backend.common.security.audit.SecurityAudit.AGENT_EDITED, memberId, null, http.getRemoteAddr(),
+			"task=" + id + (request.changesSettings() ? " settings" : ""));
 		return ResponseEntity.ok(DataResponse.from(dto));
 	}
 	@GetMapping("/agent/tasks/{id}")

@@ -104,20 +104,7 @@ public class AgentTaskService {
 			throw ApiException.of(ErrorCode.AGENT_INVALID, "실전 계좌에서 자율 주문을 하려면 예산(시드)이 필요합니다.");
 		}
 
-		Instant now = Instant.now();
-		Instant next;
-		if (schedule.type() == Schedule.Type.ONCE) {
-			next = schedule.parseOnce();
-			if (next.isBefore(now.plusSeconds(30))) {
-				throw ApiException.of(ErrorCode.AGENT_INVALID, "실행 시각은 지금보다 뒤여야 합니다.");
-			}
-			if (next.isAfter(now.plus(MAX_AHEAD))) {
-				throw ApiException.of(ErrorCode.AGENT_INVALID, "일회성 예약은 최대 1년 이내까지만 가능합니다.");
-			}
-		} else {
-			next = schedule.next(now, calendar).orElseThrow(() ->
-				ApiException.of(ErrorCode.AGENT_INVALID, "다음 실행 시각을 계산할 수 없습니다. 일정(요일·시장·시각)을 확인해 주세요."));
-		}
+		Instant next = nextRunFor(schedule);
 
 		AgentTask parent = spec.parentTaskId() == null ? null : tasks.findById(spec.parentTaskId()).orElse(null);
 		int depth = parent == null ? 0 : parent.getDepth() + 1;
@@ -313,6 +300,176 @@ public class AgentTaskService {
 		t.revise(newTitle, newInstruction.trim(), json.write(history));
 		log.info("자동 실행 지시 수정 task={} member={} by={} 길이={}", id, memberId, by, newInstruction.length());
 		return toDto(t);
+	}
+
+	// ─────────────────────────── 설정·한도·일정 수정 ───────────────────────────
+
+	/** 이 작업의 다음 실행 시각. 일회성은 미래(30초 이후, 1년 이내)여야 한다. */
+	Instant nextRunFor(Schedule schedule) {
+		Instant now = Instant.now();
+		if (schedule.type() == Schedule.Type.ONCE) {
+			Instant next = schedule.parseOnce();
+			if (next.isBefore(now.plusSeconds(30))) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "실행 시각은 지금보다 뒤여야 합니다.");
+			}
+			if (next.isAfter(now.plus(MAX_AHEAD))) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "일회성 예약은 최대 1년 이내까지만 가능합니다.");
+			}
+			return next;
+		}
+		return schedule.next(now, calendar).orElseThrow(() ->
+			ApiException.of(ErrorCode.AGENT_INVALID, "다음 실행 시각을 계산할 수 없습니다. 일정(요일·시장·시각)을 확인해 주세요."));
+	}
+
+	/**
+	 * 수정할 수 있는 작업인지 확인한다. 이미 끝났거나 중지된 작업은 수정할 수 없고,
+	 * 지금 실행 중인 작업의 설정·한도·일정은 실행이 끝나야 바꿀 수 있다(실행 결과 저장과 겹쳐 덮어쓰이는 것을 막는다).
+	 */
+	public AgentTask requireEditable(Long memberId, Long id, AgentDtos.UpdateTaskRequest req) {
+		AgentTask t = require(memberId, id);
+		if (t.getStatus() == AgentTask.Status.CANCELED || t.getStatus() == AgentTask.Status.DONE) {
+			throw ApiException.of(ErrorCode.AGENT_STATE_CONFLICT, "이미 끝났거나 중지된 작업은 수정할 수 없습니다.");
+		}
+		if (req != null && req.changesSettings() && t.getStatus() == AgentTask.Status.RUNNING) {
+			throw ApiException.of(ErrorCode.AGENT_STATE_CONFLICT, "지금 실행 중이라 설정을 바꿀 수 없습니다. 잠시 뒤에 다시 시도해 주세요.");
+		}
+		return t;
+	}
+
+	/**
+	 * 제목·지시문과 설정·한도·일정을 한 번에 바꾼다(보낸 항목만). 인증·확인 검사는 호출한 쪽이 먼저 끝낸 뒤에 부른다.
+	 * 스킬 작업은 config 만 받아 시드·일정·한도·제목을 스킬이 다시 계산한다. 장부(보유·손익)와 실행 이력은 그대로다.
+	 *
+	 * @param realAutonomous 실전 계좌의 자율 주문 작업인가. 이때 설정·한도·일정을 바꾸려면 confirmRealTrading 이 필요하다.
+	 */
+	@Transactional
+	public AgentTaskDto applyEdit(Long memberId, Long id, AgentDtos.UpdateTaskRequest req, boolean realAutonomous) {
+		AgentTask t = requireEditable(memberId, id, req);
+		boolean hasInstruction = req.instruction() != null && !req.instruction().isBlank();
+		if (!hasInstruction && req.title() == null && !req.changesSettings()) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "바꿀 내용이 없습니다.");
+		}
+		if (realAutonomous && req.changesSettings() && !Boolean.TRUE.equals(req.confirmRealTrading())) {
+			throw ApiException.from(ErrorCode.AGENT_CONFIRM_REQUIRED);
+		}
+
+		Limits oldLimits = trading.limitsOf(t);
+		Limits newLimits = oldLimits;
+		String newTitle = req.title();
+		String configJson = null;
+		String scheduleJson = null;
+		String limitsJson = null;
+		Instant nextRun = null;
+
+		if (t.getSkillId() != null) {
+			if (hasInstruction) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "스킬로 만든 작업에는 지시문이 없습니다. 설정값을 바꿔 주세요.");
+			}
+			if (req.changesLimits() || req.schedule() != null) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "스킬 작업의 시드·한도·일정은 설정값(config)으로 바꿉니다.");
+			}
+			if (req.config() != null) {
+				Skill skill = registry.require(t.getSkillId());
+				Map<String, Object> merged = new java.util.LinkedHashMap<>(
+					json.read(t.getConfigJson(), new TypeReference<Map<String, Object>>() {}, Map.of()));
+				merged.putAll(req.config());
+				Map<String, Object> cfg = skill.normalize(merged);
+				Schedule schedule = skill.schedule(cfg);
+				schedule.validate();
+				newLimits = skill.limits(cfg).normalized();
+				newTitle = req.title() != null && !req.title().isBlank() ? req.title() : skill.title(cfg);
+				configJson = json.write(cfg);
+				scheduleJson = json.write(schedule);
+				limitsJson = json.write(newLimits);
+				nextRun = nextRunFor(schedule);
+			}
+		} else {
+			if (req.config() != null) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "스킬이 아닌 작업에는 설정값(config)이 없습니다.");
+			}
+			if (req.changesLimits()) {
+				if (t.getParentTaskId() != null) {
+					throw ApiException.of(ErrorCode.AGENT_INVALID, "AI가 만든 하위 작업의 한도는 상위 작업에서 바꿉니다.");
+				}
+				if (oldLimits == null) {
+					throw ApiException.of(ErrorCode.AGENT_INVALID, "이 작업은 시드(투자 한도)가 없어 한도를 바꿀 수 없습니다.");
+				}
+				newLimits = mergeLimits(oldLimits, req);
+				limitsJson = json.write(newLimits);
+			}
+			if (req.schedule() != null) {
+				Schedule schedule = req.schedule();
+				schedule.validate();
+				nextRun = nextRunFor(schedule);
+				scheduleJson = json.write(schedule);
+			}
+		}
+
+		if (limitsJson != null && oldLimits != null) {
+			BigDecimal invested = trading.view(t).invested();
+			if (newLimits.budget().compareTo(invested) < 0) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "시드는 지금 투자 중인 금액(" + Currency.valueOf(newLimits.currency()).format(invested)
+					+ ")보다 작게 줄일 수 없습니다. 먼저 보유 종목을 정리해 주세요.");
+			}
+		}
+
+		String instruction = null;
+		String history = null;
+		if (hasInstruction) {
+			instruction = req.instruction().trim();
+			if (instruction.length() > MAX_INSTRUCTION) {
+				throw ApiException.of(ErrorCode.AGENT_INVALID, "지시 내용은 " + MAX_INSTRUCTION + "자 이하여야 합니다.");
+			}
+		}
+		if (instruction != null) {
+			String merged = "APPEND".equalsIgnoreCase(req.mode()) ? merge(t.getInstruction(), instruction, "APPEND") : instruction;
+			List<Revision> revisions = new java.util.ArrayList<>(
+				json.read(t.getInstructionHistory(), new TypeReference<List<Revision>>() {}, List.of()));
+			revisions.add(new Revision(OffsetDateTime.now(TimeUtil.SEOUL).toString(), "USER", t.getTitle(), t.getInstruction()));
+			while (revisions.size() > MAX_REVISIONS) {
+				revisions.remove(0);
+			}
+			history = json.write(revisions);
+			instruction = merged;
+		}
+
+		if (instruction != null) {
+			t.revise(newTitle, instruction, history);
+		} else {
+			t.rename(newTitle);
+		}
+		t.changeSettings(configJson, scheduleJson, limitsJson);
+		if (nextRun != null && t.getStatus() == AgentTask.Status.ACTIVE) {
+			t.setNextRunAt(nextRun);
+		}
+		log.info("자동 실행 수정 task={} member={} 설정변경={} 지시변경={} 제목변경={}", id, memberId, req.changesSettings(),
+			instruction != null, newTitle != null);
+		return toDto(t);
+	}
+
+	/** 한도 수정값을 기존 한도에 합친다. 하루 매수 한도가 '시드와 같음'(기본)이었다면 시드를 따라 바뀐다. */
+	static Limits mergeLimits(Limits old, AgentDtos.UpdateTaskRequest req) {
+		BigDecimal budget = req.budget() != null ? req.budget() : old.budget();
+		if (budget == null || budget.signum() <= 0) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "시드는 0보다 커야 합니다.");
+		}
+		Double position = req.maxPositionPct() != null ? req.maxPositionPct() : old.maxPositionPct();
+		if (position != null && (position <= 0 || position > 100)) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "한 종목 비중은 0 초과 100 이하여야 합니다.");
+		}
+		Double loss = req.maxLossPct() != null ? req.maxLossPct() : old.maxLossPct();
+		if (loss != null && (loss <= 0 || loss > 100)) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "누적 손실 한도는 0 초과 100 이하여야 합니다.");
+		}
+		BigDecimal daily = req.maxDailyBuy();
+		if (daily == null) {
+			boolean followedBudget = old.maxDailyBuy() == null || old.maxDailyBuy().compareTo(old.budget()) == 0;
+			daily = followedBudget ? budget : old.maxDailyBuy();
+		}
+		if (daily.signum() <= 0) {
+			throw ApiException.of(ErrorCode.AGENT_INVALID, "하루 매수 한도는 0보다 커야 합니다.");
+		}
+		return new Limits(budget, old.currency(), position, daily, loss).normalized();
 	}
 
 	public List<AgentDtos.RevisionDto> revisionsOf(AgentTask t) {

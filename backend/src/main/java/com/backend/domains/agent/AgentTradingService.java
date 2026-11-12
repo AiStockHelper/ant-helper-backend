@@ -1,12 +1,15 @@
 package com.backend.domains.agent;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -16,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.backend.common.exception.ApiException;
 import com.backend.common.exception.ErrorCode;
 import com.backend.common.util.Json;
+import com.backend.common.util.TimeUtil;
 import com.backend.domains.member.domain.MemberAccount;
 import com.backend.domains.trade.TradePlanner;
 import com.backend.market.queue.OrderSource;
@@ -25,6 +29,7 @@ import com.backend.market.Market;
 import com.backend.market.TradingService;
 import com.backend.market.dto.MarketDtos.AccountSummary;
 import com.backend.market.dto.MarketDtos.Holding;
+import com.backend.market.dto.MarketDtos.OrderHistoryItem;
 import com.backend.market.dto.MarketDtos.OrderOutcome;
 
 import lombok.RequiredArgsConstructor;
@@ -217,12 +222,132 @@ public class AgentTradingService {
 		tx.executeWithoutResult(s -> positions.findById(positionId).ifPresent(p -> p.mark(price)));
 	}
 
-	/** 계좌의 실제 보유와 장부를 맞춘다(수동 매도·체결 실패 등으로 어긋난 경우). 바뀐 내용을 문장으로 돌려준다. */
+		/** 방금 이 앱이 낸 매수는 아직 계좌에 반영되기 전일 수 있다. 이 시간 안의 매수가 있는 종목은 직접 매도로 보지 않는다. */
+	static final java.time.Duration RECENT_BUY_GRACE = java.time.Duration.ofMinutes(15);
+
+	/** 계좌의 실제 보유와 장부를 맞춘다. 계좌 요약을 직접 조회한다. */
 	public List<String> reconcile(AgentTask task, MemberAccount account) {
-		List<AgentPosition> open = positions.findByLedgerIdAndStatus(ledgerOf(task), AgentPosition.Status.OPEN);
-		if (open.isEmpty()) {
+		return reconcile(task, account, null);
+	}
+
+	/**
+	 * 계좌의 실제 보유와 장부를 맞춘다. 한국투자증권 앱 등에서 직접 판 수량은 체결 내역에서 실제 매도가를 찾아
+	 * 실현손익까지 장부에 기록하고, 체결가를 찾지 못하면 마지막 시세로 추정해 그렇게 표시한다.
+	 * (계좌에 더 많이 있는 경우, 즉 앱 밖에서 추가 매수한 것은 이 작업이 관리하지 않으므로 건드리지 않는다.)
+	 * 바뀐 내용을 문장으로 돌려준다. heldBySymbol("KRX:005930"→수량)을 미리 조회해 넘기면 계좌당 조회를 한 번으로 줄일 수 있다.
+	 */
+	public List<String> reconcile(AgentTask task, MemberAccount account, Map<String, Long> heldBySymbol) {
+		Long ledger = ledgerOf(task);
+		ReentrantLock lock = lock(ledger);
+		lock.lock();
+		try {
+			List<AgentPosition> open = positions.findByLedgerIdAndStatus(ledger, AgentPosition.Status.OPEN);
+			if (open.isEmpty()) {
+				return List.of();
+			}
+			Map<String, Long> held = heldBySymbol != null ? heldBySymbol : heldQuantities(account);
+			Map<Boolean, List<OrderHistoryItem>> history = new HashMap<>();
+			Set<String> known = null;
+			Instant now = Instant.now();
+			List<String> changes = new ArrayList<>();
+			for (AgentPosition p : open) {
+				AgentPosition fresh = positions.findById(p.getId()).orElse(null);
+				if (fresh == null || fresh.getStatus() != AgentPosition.Status.OPEN) {
+					continue;
+				}
+				long actual = held.getOrDefault(holdingKey(fresh.getMarket(), fresh.getSymbol()), 0L);
+				long missing = fresh.getQuantity() - actual;
+				if (missing <= 0 || recentlyBought(ledger, fresh, now)) {
+					continue;
+				}
+				boolean overseas = fresh.getMarket().overseas();
+				List<OrderHistoryItem> orders = history.computeIfAbsent(overseas, o -> loadOrders(account, o, open));
+				if (ExternalTradeMatcher.hasPendingBuy(orders, fresh.getMarket(), fresh.getSymbol())) {
+					continue; // 체결 대기 중인 매수가 있으면 수량이 곧 늘 것이다
+				}
+				if (known == null) {
+					known = knownOrderKeys(ledger);
+				}
+				changes.addAll(bookExternalSells(task, fresh, missing, orders, known));
+			}
+			return changes;
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/** 앱 밖 매도로 줄어든 수량을 장부에 반영한다: 체결 내역으로 확인된 만큼은 실제 체결가로, 나머지는 마지막 시세로 추정한다. */
+	private List<String> bookExternalSells(AgentTask task, AgentPosition position, long missing, List<OrderHistoryItem> orders,
+		Set<String> known) {
+		Currency cur = position.getMarket().currency();
+		List<String> lines = new ArrayList<>();
+		ExternalTradeMatcher.Attribution found = ExternalTradeMatcher.externalSells(orders, known, position.getMarket(),
+			position.getSymbol(), position.getOpenedAt(), missing, TimeUtil.SEOUL);
+		long confirmed = found == null ? 0 : found.quantity();
+		BigDecimal before = position.getRealizedPnl();
+		if (found != null) {
+			applyExternalSell(task, position.getId(), found.quantity(), found.averagePrice(), found.firstOrderNo(),
+				"한국투자증권에서 직접 매도(앱 밖 주문)");
+			BigDecimal pnl = found.averagePrice().subtract(position.getAvgPrice()).multiply(BigDecimal.valueOf(found.quantity()));
+			lines.add(position.getName() + " " + found.quantity() + "주: 앱 밖(한국투자증권)에서 직접 매도한 것을 장부에 반영했어요. 평균 "
+				+ cur.format(found.averagePrice()) + ", 실현손익 " + signed(cur, pnl) + ".");
+		}
+		long rest = missing - confirmed;
+		if (rest > 0) {
+			BigDecimal price = position.getLastPrice() != null ? position.getLastPrice() : position.getAvgPrice();
+			applyExternalSell(task, position.getId(), rest, price, null, "계좌 보유 수량에 맞춤(체결가를 찾지 못해 마지막 시세로 추정)");
+			BigDecimal pnl = price.subtract(position.getAvgPrice()).multiply(BigDecimal.valueOf(rest));
+			lines.add(position.getName() + " " + rest + "주: 계좌에서 줄어든 것을 확인했지만 체결 내역을 찾지 못해 마지막 시세 " + cur.format(price)
+				+ "로 정리했어요(실현손익 추정 " + signed(cur, pnl) + ").");
+		}
+		log.info("앱 밖 매도 반영 task={} {} 확인={}주 추정={}주 실현손익 변화 {}→{}", task.getId(), position.getSymbol(), confirmed, Math.max(0, rest),
+			before, position.getRealizedPnl());
+		return lines;
+	}
+
+	private void applyExternalSell(AgentTask task, Long positionId, long qty, BigDecimal price, String orderNo, String reason) {
+		tx.executeWithoutResult(s -> {
+			AgentPosition f = positions.findById(positionId).orElseThrow();
+			f.applySell(qty, price, reason);
+			trades.save(new AgentTrade(ledgerOf(task), task.getId(), task.getMemberId(), "SELL", f.getMarket(), f.getSymbol(),
+				f.getName(), qty, price, orderNo, reason));
+		});
+	}
+
+	private static String signed(Currency cur, BigDecimal v) {
+		return (v.signum() > 0 ? "+" : "") + cur.format(v);
+	}
+
+	private boolean recentlyBought(Long ledger, AgentPosition p, Instant now) {
+		return trades.findTop40ByLedgerIdOrderByIdDesc(ledger).stream()
+			.anyMatch(t -> "BUY".equals(t.getSide()) && t.getMarket() == p.getMarket() && t.getSymbol().equalsIgnoreCase(p.getSymbol())
+				&& t.getCreatedAt() != null && Duration.between(t.getCreatedAt(), now).compareTo(RECENT_BUY_GRACE) < 0);
+	}
+
+	private Set<String> knownOrderKeys(Long ledger) {
+		Set<String> keys = new HashSet<>();
+		for (AgentTrade t : trades.withOrderNo(ledger)) {
+			Instant at = t.getCreatedAt() == null ? Instant.now() : t.getCreatedAt();
+			keys.add(ExternalTradeMatcher.key(at.atZone(TimeUtil.SEOUL).toLocalDate(), t.getOrderNo()));
+		}
+		return keys;
+	}
+
+	/** 열린 종목 중 가장 오래된 매수일부터 오늘까지의 주문·체결. 조회에 실패하면 빈 목록(→ 마지막 시세로 추정한다). */
+	private List<OrderHistoryItem> loadOrders(MemberAccount account, boolean overseas, List<AgentPosition> open) {
+		Instant earliest = open.stream().filter(p -> p.getMarket().overseas() == overseas).map(AgentPosition::getOpenedAt)
+			.filter(java.util.Objects::nonNull).min(Instant::compareTo).orElse(Instant.now());
+		LocalDate from = earliest.atZone(TimeUtil.SEOUL).toLocalDate();
+		try {
+			return tradingService.orders(account, overseas, from, LocalDate.now(TimeUtil.SEOUL));
+		} catch (RuntimeException e) {
+			log.warn("체결 내역을 불러오지 못해 마지막 시세로 추정합니다 account={}: {}", account.getId(), e.getMessage());
 			return List.of();
 		}
+	}
+
+	/** 계좌의 종목별 보유 수량("KRX:005930" → 수량, 미국은 "US:AAPL"). */
+	public Map<String, Long> heldQuantities(MemberAccount account) {
 		AccountSummary summary = tradingService.summary(account);
 		Map<String, Long> held = new HashMap<>();
 		for (Holding h : summary.holdings()) {
@@ -233,25 +358,11 @@ public class AgentTradingService {
 				held.merge("US:" + h.productNumber(), h.quantity(), Long::sum);
 			}
 		}
-		List<String> changes = new ArrayList<>();
-		tx.executeWithoutResult(s -> {
-			for (AgentPosition p : open) {
-				AgentPosition fresh = positions.findById(p.getId()).orElse(null);
-				if (fresh == null || fresh.getStatus() != AgentPosition.Status.OPEN) {
-					continue;
-				}
-				String key = (fresh.getMarket() == Market.KRX ? "KRX:" : "US:") + fresh.getSymbol();
-				long actual = held.getOrDefault(key, 0L);
-				if (actual <= 0) {
-					fresh.release("계좌에 보유 수량이 없어 장부에서 제외");
-					changes.add(fresh.getName() + ": 계좌에 보유 수량이 없어 관리 대상에서 제외했습니다.");
-				} else if (actual < fresh.getQuantity()) {
-					changes.add(fresh.getName() + ": 보유 수량이 " + fresh.getQuantity() + "주에서 " + actual + "주로 줄어 장부를 맞췄습니다.");
-					fresh.shrinkTo(actual, "계좌 보유 수량에 맞춤");
-				}
-			}
-		});
-		return changes;
+		return held;
+	}
+
+	private static String holdingKey(Market market, String symbol) {
+		return (market == Market.KRX ? "KRX:" : "US:") + symbol;
 	}
 
 	/** 장부의 모든 열린 종목을 매도한다. 각 결과를 events 에 남긴다. */

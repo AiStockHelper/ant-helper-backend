@@ -370,10 +370,11 @@ public class AgentTaskService {
 			}
 			if (req.config() != null) {
 				Skill skill = registry.require(t.getSkillId());
-				Map<String, Object> merged = new java.util.LinkedHashMap<>(
-					json.read(t.getConfigJson(), new TypeReference<Map<String, Object>>() {}, Map.of()));
+				Map<String, Object> oldConfig = json.read(t.getConfigJson(), new TypeReference<Map<String, Object>>() {}, Map.of());
+				Map<String, Object> merged = new java.util.LinkedHashMap<>(oldConfig);
 				merged.putAll(req.config());
 				Map<String, Object> cfg = skill.normalize(merged);
+				skill.validateChange(oldConfig, cfg, !trading.view(t).open().isEmpty());
 				Schedule schedule = skill.schedule(cfg);
 				schedule.validate();
 				newLimits = skill.limits(cfg).normalized();

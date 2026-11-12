@@ -108,6 +108,16 @@ class IndexEtfSkillTest {
 		assertThatThrownBy(() -> skill.normalize(Map.of("maxLossPct", 90))).isInstanceOf(ApiException.class);
 	}
 
+	@Test
+	void etfCannotBeSwitchedWhileHolding() {
+		Map<String, Object> spy = skill.normalize(Map.of());
+		Map<String, Object> kodex = skill.normalize(Map.of("etf", "069500"));
+		assertThatThrownBy(() -> skill.validateChange(spy, kodex, true)).isInstanceOf(ApiException.class).hasMessageContaining("보유 중");
+		// 보유가 없으면 바꿀 수 있고, 같은 ETF 의 다른 설정 변경은 보유 중에도 가능하다
+		skill.validateChange(spy, kodex, false);
+		skill.validateChange(spy, skill.normalize(Map.of("trendDays", 200)), true);
+	}
+
 	// ─────────────────────────── 실행 ───────────────────────────
 
 	/** 약간의 등락이 있는 일봉 200개. 어제까지. drift 가 양수면 우상향, 음수면 우하향. */

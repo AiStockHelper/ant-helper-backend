@@ -56,6 +56,13 @@ public interface Skill {
 	/** 사용자 입력을 검증하고 기본값을 채운 설정을 돌려준다. 잘못되면 ApiException. */
 	Map<String, Object> normalize(Map<String, Object> input);
 
+	/**
+	 * 이미 켜 둔 작업의 설정을 바꿀 때 스킬이 추가로 확인할 것(예: 보유 중에는 종목을 바꿀 수 없다).
+	 * 바꾸면 안 되는 경우 ApiException 을 던진다. oldConfig 는 지금 저장된 값, newConfig 는 정규화된 새 값.
+	 */
+	default void validateChange(Map<String, Object> oldConfig, Map<String, Object> newConfig, boolean hasOpenPositions) {
+	}
+
 	Schedule schedule(Map<String, Object> config);
 
 	/** 주문을 내는 스킬이 쓸 시드/한도. 주문하지 않으면 null. */

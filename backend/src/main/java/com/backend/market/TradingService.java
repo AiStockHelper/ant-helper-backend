@@ -187,6 +187,11 @@ public class TradingService {
 		return PageResponse.of(p);
 	}
 
+	/** 기간 내 주문·체결 전체(쪽수 나누기 없이). 자동 실행 장부와 계좌를 맞출 때 앱 밖 주문을 찾는 데 쓴다. */
+	public List<OrderHistoryItem> orders(MemberAccount account, boolean overseas, LocalDate from, LocalDate to) {
+		return overseas ? overseasOrders(account, from, to) : domesticOrders(account, from, to);
+	}
+
 	private List<OrderHistoryItem> domesticOrders(MemberAccount account, LocalDate from, LocalDate to) {
 		boolean recent = from.isAfter(LocalDate.now(SEOUL).minusMonths(3));
 		InquireDailyCcldApi api = new InquireDailyCcldApi(from.format(YMD), to.format(YMD), "KRX");

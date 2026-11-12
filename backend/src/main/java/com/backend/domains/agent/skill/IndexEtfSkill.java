@@ -158,6 +158,14 @@ public class IndexEtfSkill implements Skill {
 	}
 
 	@Override
+	public void validateChange(Map<String, Object> oldConfig, Map<String, Object> newConfig, boolean hasOpenPositions) {
+		Object before = oldConfig == null ? null : oldConfig.get("etf");
+		if (hasOpenPositions && before != null && !before.equals(newConfig.get("etf"))) {
+			throw invalid("ETF를 보유 중이라 종목을 바꿀 수 없습니다. 먼저 보유분을 정리(전량 매도)하거나 새로 시작해 주세요.");
+		}
+	}
+
+	@Override
 	public Schedule schedule(Map<String, Object> config) {
 		return Schedule.marketEvent((String)config.get("market"), "CLOSE", -15);
 	}

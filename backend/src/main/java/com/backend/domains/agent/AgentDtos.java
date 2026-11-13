@@ -39,7 +39,9 @@ public final class AgentDtos {
 
 	public record TradeDto(
 		Long id, String side, String market, String currency, String symbol, String name, long quantity,
-		BigDecimal price, BigDecimal amount, String reason, OffsetDateTime createdAt
+		BigDecimal price, BigDecimal amount, String reason, OffsetDateTime createdAt,
+		/** 매도일 때 그때까지의 평균 매입단가, 실현손익(수수료·세금 제외), 손익률(%). 원가를 알 수 없거나 매수면 null */
+		BigDecimal costPrice, BigDecimal realizedPnl, Double realizedPnlPct
 	) {
 	}
 

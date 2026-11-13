@@ -44,6 +44,7 @@ public class AccountService {
 	private final com.backend.common.crypto.CryptoService crypto;
 	private final com.backend.domains.auth.otp.StepUpService stepUp;
 	private final SecurityAudit audit;
+	private final AccountBaselineService baselines;
 
 	/** 소유권을 확인해서 계좌를 돌려준다. 다른 사람의 계좌 ID 를 넣으면 존재하지 않는 것처럼 응답한다. */
 	@Transactional(readOnly = true)
@@ -148,8 +149,25 @@ public class AccountService {
 		}
 	}
 
+	/** 계좌 요약. 국내·해외 각각 기준 자산(원금) 대비 손익(baseline)이 붙는다. */
 	public AccountSummary summary(Long memberId, Long accountId) {
-		return tradingService.summary(requireOwned(memberId, accountId));
+		return baselines.enrich(tradingService.summary(requireOwned(memberId, accountId)));
+	}
+
+	/** 기준 자산(원금)을 정한다. amount 가 null 이면 기준을 지워서, 다음 조회 때 그 시점의 총자산이 새 기준이 되게 한다. */
+	public void setBaseline(Long memberId, Long accountId, String currency, java.math.BigDecimal amount) {
+		requireOwned(memberId, accountId);
+		com.backend.market.Currency cur;
+		try {
+			cur = com.backend.market.Currency.valueOf(currency == null ? "" : currency.trim().toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			throw ApiException.of(ErrorCode.INVALID_PARAMETER, "통화는 KRW 또는 USD 여야 합니다.");
+		}
+		if (amount == null) {
+			baselines.reset(accountId, cur);
+		} else {
+			baselines.set(accountId, cur, amount);
+		}
 	}
 
 	public PageResponse<OrderHistoryItem> orders(Long memberId, Long accountId, boolean overseas, LocalDate from,

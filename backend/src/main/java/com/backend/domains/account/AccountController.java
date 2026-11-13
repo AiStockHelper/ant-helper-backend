@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,6 +22,7 @@ import com.backend.common.dto.PageResponse;
 import com.backend.domains.account.AccountDtos.Account;
 import com.backend.domains.account.AccountDtos.AccountDetail;
 import com.backend.domains.account.AccountDtos.CreateAccountRequest;
+import com.backend.domains.account.AccountDtos.SetBaselineRequest;
 import com.backend.domains.account.AccountDtos.UpdateAccountRequest;
 import com.backend.market.dto.MarketDtos.AccountSummary;
 import com.backend.market.dto.MarketDtos.OrderHistoryItem;
@@ -73,6 +75,16 @@ public class AccountController {
 	@GetMapping("/{id}/summary")
 	public ResponseEntity<DataResponse<AccountSummary>> summary(@AuthenticationPrincipal Long memberId, @PathVariable Long id) {
 		return ResponseEntity.ok(DataResponse.from(accountService.summary(memberId, id)));
+	}
+
+	@PutMapping("/{id}/baseline")
+	public ResponseEntity<DataResponse<Void>> setBaseline(
+		@AuthenticationPrincipal Long memberId,
+		@PathVariable Long id,
+		@RequestBody @Valid SetBaselineRequest request
+	) {
+		accountService.setBaseline(memberId, id, request.currency(), request.amount());
+		return ResponseEntity.ok(DataResponse.ok());
 	}
 
 	@GetMapping("/{id}/orders")

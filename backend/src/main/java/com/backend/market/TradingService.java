@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 
 import org.springframework.data.domain.Page;
@@ -178,13 +179,64 @@ public class TradingService {
 
 	public PageResponse<OrderHistoryItem> orderHistory(MemberAccount account, boolean overseas, LocalDate from,
 		LocalDate to, int page, int size) {
-		List<OrderHistoryItem> all = overseas ? overseasOrders(account, from, to) : domesticOrders(account, from, to);
+		List<OrderHistoryItem> all = ordersWithProfit(account, overseas, from, to);
 		all.sort(Comparator.comparing(OrderHistoryItem::orderedAt).reversed());
 		int safeSize = Math.max(1, Math.min(size, 100));
 		int start = Math.min(Math.max(page, 0) * safeSize, all.size());
 		int end = Math.min(start + safeSize, all.size());
 		Page<OrderHistoryItem> p = new PageImpl<>(all.subList(start, end), PageRequest.of(Math.max(page, 0), safeSize), all.size());
 		return PageResponse.of(p);
+	}
+
+	/**
+	 * 요청한 기간의 주문·체결에 매도별 실현손익을 붙여서 돌려준다. 원가(매수 기록)를 찾으려고 요청 시작일보다 앞선
+	 * 체결도 함께 조회하되, 그 조회가 실패하면 요청한 기간만 조회하고 손익은 붙이지 않는다.
+	 */
+	private List<OrderHistoryItem> ordersWithProfit(MemberAccount account, boolean overseas, LocalDate from, LocalDate to) {
+		LocalDate lookFrom = lookbackStart(from, LocalDate.now(SEOUL));
+		if (lookFrom.isBefore(from)) {
+			try {
+				List<OrderHistoryItem> wide = overseas ? overseasOrders(account, lookFrom, to) : domesticOrders(account, lookFrom, to);
+				List<OrderHistoryItem> out = new ArrayList<>();
+				for (OrderHistoryItem o : attachRealized(wide)) {
+					if (!o.orderedAt().atZoneSameInstant(SEOUL).toLocalDate().isBefore(from)) {
+						out.add(o);
+					}
+				}
+				return out;
+			} catch (RuntimeException e) {
+				log.info("실현손익 계산을 위한 확장 조회에 실패해 요청한 기간만 조회합니다(계좌 {}): {}", account.getId(), e.getMessage());
+			}
+		}
+		return overseas ? overseasOrders(account, from, to) : domesticOrders(account, from, to);
+	}
+
+	/** 원가를 찾기 위해 요청 시작일보다 며칠 앞서 조회할지: 90일 전까지. 단, 최근 3개월용 조회 방식을 그대로 쓸 수 있는 범위까지만 넓힌다. */
+	static LocalDate lookbackStart(LocalDate from, LocalDate today) {
+		LocalDate want = from.minusDays(90);
+		if (from.isAfter(today.minusMonths(3))) {
+			LocalDate floor = today.minusMonths(3).plusDays(1);
+			return want.isBefore(floor) ? (floor.isBefore(from) ? floor : from) : want;
+		}
+		return want;
+	}
+
+	/** 체결된 주문(수량·평균가가 있는 것)으로 매도별 실현손익을 계산해 붙인다. 입력 목록은 바꾸지 않는다. */
+	static List<OrderHistoryItem> attachRealized(List<OrderHistoryItem> items) {
+		List<TradeProfit.Fill> fills = new ArrayList<>();
+		for (int i = 0; i < items.size(); i++) {
+			OrderHistoryItem o = items.get(i);
+			if (o.orderedAt() == null || o.executedQuantity() <= 0 || o.averageExecutedPrice() == null
+				|| o.averageExecutedPrice().signum() <= 0 || "REJECTED".equals(o.status())) {
+				continue;
+			}
+			fills.add(new TradeProfit.Fill(i, o.productNumber().toUpperCase(java.util.Locale.ROOT) + ":" + o.currency(),
+				"SELL".equals(o.side()), o.executedQuantity(), o.averageExecutedPrice(), o.orderedAt().toInstant()));
+		}
+		Map<Integer, TradeProfit.Realized> realized = TradeProfit.realized(fills);
+		List<OrderHistoryItem> out = new ArrayList<>(items);
+		realized.forEach((i, r) -> out.set(i, items.get(i).withProfit(r.costPrice(), r.pnl(), r.pnlRate())));
+		return out;
 	}
 
 	/** 기간 내 주문·체결 전체(쪽수 나누기 없이). 자동 실행 장부와 계좌를 맞출 때 앱 밖 주문을 찾는 데 쓴다. */

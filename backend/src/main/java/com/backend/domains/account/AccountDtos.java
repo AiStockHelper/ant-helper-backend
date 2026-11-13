@@ -32,6 +32,10 @@ public final class AccountDtos {
 	) {
 	}
 
+	/** amount 가 null 이면 기준 자산을 지운다(다음 조회 때 그 시점의 총자산이 새 기준). */
+	public record SetBaselineRequest(@NotBlank(message = "통화(currency)는 필수입니다.") String currency, java.math.BigDecimal amount) {
+	}
+
 	public record Account(
 		Long id, AccountType accountType, String alias, String accountNumberMasked,
 		String accountProductCode, boolean isDefault, OffsetDateTime createdAt

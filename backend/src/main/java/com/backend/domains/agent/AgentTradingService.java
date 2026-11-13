@@ -26,6 +26,7 @@ import com.backend.market.queue.OrderSource;
 import com.backend.domains.trade.TradePlanner.Plan;
 import com.backend.market.Currency;
 import com.backend.market.Market;
+import com.backend.market.TradeProfit;
 import com.backend.market.TradingService;
 import com.backend.market.dto.MarketDtos.AccountSummary;
 import com.backend.market.dto.MarketDtos.Holding;
@@ -92,6 +93,20 @@ public class AgentTradingService {
 
 	public List<AgentPosition> allPositions(AgentTask task) {
 		return positions.findTop60ByLedgerIdOrderByIdDesc(ledgerOf(task));
+	}
+
+	/** 장부의 매도 거래별 실현손익(이동평균 원가, 수수료·세금 제외). 거래 id → 손익. 원가를 알 수 없는 매도는 없다. */
+	public Map<Long, TradeProfit.Realized> tradeProfits(AgentTask task) {
+		List<AgentTrade> all = trades.findByLedgerIdOrderByIdAsc(ledgerOf(task));
+		List<TradeProfit.Fill> fills = new ArrayList<>();
+		for (int i = 0; i < all.size(); i++) {
+			AgentTrade t = all.get(i);
+			fills.add(new TradeProfit.Fill(i, t.getMarket().name() + ":" + t.getSymbol().toUpperCase(java.util.Locale.ROOT),
+				"SELL".equals(t.getSide()), t.getQuantity(), t.getPrice(), t.getCreatedAt()));
+		}
+		Map<Long, TradeProfit.Realized> out = new HashMap<>();
+		TradeProfit.realized(fills).forEach((i, r) -> out.put(all.get(i).getId(), r));
+		return out;
 	}
 
 	public List<AgentTrade> recentTrades(AgentTask task) {

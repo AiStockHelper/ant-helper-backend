@@ -27,6 +27,7 @@ import com.backend.domains.agent.AgentDtos.LedgerDto;
 import com.backend.domains.agent.AgentDtos.PositionDto;
 import com.backend.domains.agent.AgentDtos.RunDto;
 import com.backend.domains.agent.AgentDtos.TradeDto;
+import com.backend.market.TradeProfit;
 import com.backend.domains.agent.AgentTradingService.LedgerView;
 import com.backend.domains.agent.skill.Skill;
 import com.backend.domains.agent.skill.SkillRegistry;
@@ -202,7 +203,8 @@ public class AgentTaskService {
 	public AgentTaskDetail detail(Long memberId, Long id) {
 		AgentTask t = require(memberId, id);
 		List<PositionDto> positions = trading.allPositions(t).stream().map(this::positionDto).toList();
-		List<TradeDto> trades = trading.recentTrades(t).stream().map(this::tradeDto).toList();
+		Map<Long, TradeProfit.Realized> profits = trading.tradeProfits(t);
+		List<TradeDto> trades = trading.recentTrades(t).stream().map(x -> tradeDto(x, profits.get(x.getId()))).toList();
 		List<RunDto> runDtos = runs.findTop20ByTaskIdOrderByIdDesc(t.getId()).stream().map(this::runDto).toList();
 		return new AgentTaskDetail(toDto(t), positions, trades, runDtos, t.getMemory(), revisionsOf(t));
 	}
@@ -572,9 +574,10 @@ public class AgentTaskService {
 			p.getStatus().name(), TimeUtil.kst(p.getOpenedAt()), TimeUtil.kst(p.getClosedAt()), p.getExitReason());
 	}
 
-	private TradeDto tradeDto(AgentTrade t) {
+	private TradeDto tradeDto(AgentTrade t, TradeProfit.Realized r) {
 		return new TradeDto(t.getId(), t.getSide(), t.getMarket().name(), t.getMarket().currency().name(), t.getSymbol(),
-			t.getName(), t.getQuantity(), t.getPrice(), t.getAmount(), t.getReason(), TimeUtil.kst(t.getCreatedAt()));
+			t.getName(), t.getQuantity(), t.getPrice(), t.getAmount(), t.getReason(), TimeUtil.kst(t.getCreatedAt()),
+			r == null ? null : r.costPrice(), r == null ? null : r.pnl(), r == null ? null : r.pnlRate());
 	}
 
 	private RunDto runDto(AgentRun r) {

@@ -12,6 +12,9 @@ public interface AgentTradeRepository extends JpaRepository<AgentTrade, Long> {
 
 	List<AgentTrade> findTop40ByLedgerIdOrderByIdDesc(Long ledgerId);
 
+	/** 매도별 손익을 시간순으로 다시 계산하려고 장부의 모든 거래를 오래된 것부터 읽는다. */
+	List<AgentTrade> findByLedgerIdOrderByIdAsc(Long ledgerId);
+
 	@Query("select coalesce(sum(t.amount), 0) from AgentTrade t where t.ledgerId = :ledgerId and t.side = 'BUY' "
 		+ "and t.createdAt >= :since")
 	BigDecimal boughtSince(@Param("ledgerId") Long ledgerId, @Param("since") Instant since);

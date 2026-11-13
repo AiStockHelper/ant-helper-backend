@@ -10,17 +10,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * AI 응답(JSON)을 검증해 읽는다. AI 가 무엇을 말하든 후보 목록 밖 종목, 보유하지 않은 종목의 매도, 형식이 틀린 항목은 버린다.
+ * AI 응답(JSON)의 형식을 검증해 읽는다. 종목이 실제로 있는지·거래 가능한지는 여기서 보지 않고 {@link NewsPickValidator} 가 본다.
+ * 형식이 틀린 항목, 이미 보유한 종목의 매수, 보유하지 않은 종목의 매도, 중복은 버린다.
  * 응답 전체가 JSON 으로 읽히지 않으면 null 을 돌려 주고, 호출한 쪽은 그날 주문을 하지 않는다.
  */
 final class NewsDecisionParser {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
+	/** AI 가 한 번에 제안할 수 있는 매수 항목 수의 상한(과도한 응답 방지) */
+	static final int MAX_BUYS = 10;
 
 	private NewsDecisionParser() {
 	}
 
-	record Pick(String symbol, int conviction, String reason) {
+	record Pick(String symbol, String name, int conviction, String reason) {
 	}
 
 	record Sell(String symbol, String reason) {
@@ -30,7 +33,7 @@ final class NewsDecisionParser {
 	record Decision(String marketView, List<Pick> buys, List<Sell> sells, int rejected) {
 	}
 
-	static Decision parse(String text, Set<String> candidates, Set<String> held) {
+	static Decision parse(String text, Set<String> held) {
 		JsonNode root = readJson(text);
 		if (root == null || !root.isObject()) {
 			return null;
@@ -42,12 +45,14 @@ final class NewsDecisionParser {
 		if (b != null && b.isArray()) {
 			for (JsonNode n : b) {
 				String symbol = upper(n.path("symbol").asText(""));
+				String name = clip(n.path("name").asText(""), 80);
 				int conviction = conviction(n.get("conviction"));
-				if (symbol.isEmpty() || !candidates.contains(symbol) || held.contains(symbol) || conviction < 1 || !seen.add(symbol)) {
+				if (buys.size() >= MAX_BUYS || symbol.isEmpty() || symbol.length() > 12 || !symbol.matches("[0-9A-Z.\\-]+")
+					|| held.contains(symbol) || conviction < 1 || !seen.add(symbol)) {
 					rejected++;
 					continue;
 				}
-				buys.add(new Pick(symbol, conviction, clip(n.path("reason").asText(""), 160)));
+				buys.add(new Pick(symbol, name, conviction, clip(n.path("reason").asText(""), 160)));
 			}
 		}
 		List<Sell> sells = new ArrayList<>();
@@ -85,17 +90,20 @@ final class NewsDecisionParser {
 	}
 
 	private static int conviction(JsonNode n) {
-		if (n == null || !n.isNumber()) {
-			if (n != null && n.isTextual()) {
-				try {
-					return clamp((int)Math.round(Double.parseDouble(n.asText().trim())));
-				} catch (NumberFormatException e) {
-					return 0;
-				}
-			}
+		if (n == null) {
 			return 0;
 		}
-		return clamp((int)Math.round(n.asDouble()));
+		if (n.isNumber()) {
+			return clamp((int)Math.round(n.asDouble()));
+		}
+		if (n.isTextual()) {
+			try {
+				return clamp((int)Math.round(Double.parseDouble(n.asText().trim())));
+			} catch (NumberFormatException e) {
+				return 0;
+			}
+		}
+		return 0;
 	}
 
 	private static int clamp(int v) {

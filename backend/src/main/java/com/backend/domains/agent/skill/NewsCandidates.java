@@ -1,10 +1,8 @@
 package com.backend.domains.agent.skill;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 import com.backend.common.exception.ApiException;
 import com.backend.market.Market;
@@ -12,8 +10,8 @@ import com.backend.market.MarketDataService;
 import com.backend.market.dto.MarketDtos.StockSummary;
 
 /**
- * 뉴스 AI 스킬이 고를 수 있는 후보 목록. AI 는 이 목록 밖의 종목을 살 수 없다(환각·프롬프트 주입 방지).
- * 기본 후보는 산업(섹터) ETF 다: 뉴스 기반 섹터 선택을 과거 데이터로 시험했을 때 쓴 종류이고, 개별 종목보다 분산되어 있다.
+ * 산업 ETF 참고 목록. AI 가 종목을 자유롭게 제안하는 방식에서도 '산업 전체'에 투자하고 싶을 때 쓸 수 있도록 프롬프트에 보여 주고,
+ * 이 목록의 ETF 는 야간 분석 대상(보통주만)이 아니어도 통과시킨다. 목록의 코드는 사람이 확인한 것이다.
  */
 final class NewsCandidates {
 
@@ -41,39 +39,24 @@ final class NewsCandidates {
 		new Seed("140700", "보험"), new Seed("117700", "건설"), new Seed("117680", "철강"), new Seed("117460", "에너지화학"),
 		new Seed("140710", "운송"), new Seed("266390", "경기소비재"), new Seed("266410", "필수소비재"), new Seed("300950", "게임"));
 
-	static final int MAX_STOCKS = 25;
-
-	/**
-	 * @param universe "ETF" | "STOCK" | "BOTH"
-	 * @param custom   사용자가 직접 지정한 종목(있으면 이것만 쓴다)
-	 * @param stocks   기본 대형주 목록(설정의 추천 후보군)
-	 */
-	static List<Candidate> build(MarketDataService md, boolean krx, String universe, List<String> custom, List<String> stocks) {
-		Map<String, Candidate> out = new LinkedHashMap<>();
-		if (custom != null && !custom.isEmpty()) {
-			for (String s : custom) {
-				add(out, resolve(md, s, krx, "종목", ""));
-			}
-			return new ArrayList<>(out.values());
-		}
-		if (!"STOCK".equals(universe)) {
-			for (Seed s : krx ? KRX_ETFS : US_ETFS) {
-				add(out, resolve(md, s.symbol(), krx, "ETF", s.theme()));
-			}
-		}
-		if (!"ETF".equals(universe) && stocks != null) {
-			stocks.stream().limit(MAX_STOCKS).forEach(s -> add(out, resolve(md, s, krx, "종목", "")));
-		}
-		return new ArrayList<>(out.values());
+	static boolean isReferenceEtf(boolean krx, String symbol) {
+		String s = symbol == null ? "" : symbol.trim().toUpperCase(Locale.ROOT);
+		return (krx ? KRX_ETFS : US_ETFS).stream().anyMatch(e -> e.symbol().equals(s));
 	}
 
-	private static void add(Map<String, Candidate> out, Candidate c) {
-		if (c != null) {
-			out.putIfAbsent(c.symbol(), c);
+	/** 종목 마스터에서 확인된 참고 ETF 만(이름 포함). */
+	static List<Candidate> referenceEtfs(MarketDataService md, boolean krx) {
+		List<Candidate> out = new ArrayList<>();
+		for (Seed s : krx ? KRX_ETFS : US_ETFS) {
+			Candidate c = resolve(md, s.symbol(), krx, s.theme());
+			if (c != null) {
+				out.add(c);
+			}
 		}
+		return out;
 	}
 
-	private static Candidate resolve(MarketDataService md, String symbol, boolean krx, String kind, String theme) {
+	private static Candidate resolve(MarketDataService md, String symbol, boolean krx, String theme) {
 		try {
 			StockSummary s = md.resolve(symbol, krx ? Market.KRX : null);
 			if (krx != (s.market() == Market.KRX)) {
@@ -82,7 +65,7 @@ final class NewsCandidates {
 			if (krx && s.name() != null && s.name().equals(s.productNumber())) {
 				return null;      // 종목 마스터에 없는 6자리 코드는 이름을 알 수 없어 제외한다
 			}
-			return new Candidate(s.productNumber().toUpperCase(Locale.ROOT), s.market(), s.name(), kind, theme);
+			return new Candidate(s.productNumber().toUpperCase(Locale.ROOT), s.market(), s.name(), "ETF", theme);
 		} catch (ApiException e) {
 			return null;
 		}

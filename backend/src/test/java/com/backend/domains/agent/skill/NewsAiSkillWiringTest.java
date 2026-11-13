@@ -12,6 +12,7 @@ import org.springframework.core.env.MapPropertySource;
 import com.backend.common.properties.AppProperties;
 import com.backend.domains.chat.ai.LlmGateway;
 import com.backend.domains.news.NewsFeedService;
+import com.backend.domains.screening.ScreeningService;
 
 /** 운영에서 앱이 뜰 때 스킬과 뉴스 서비스가 스프링 주입으로 만들어지는지(생성자·@Value 기본값) 확인한다. DB·Redis 없이 이 부분만 검증한다. */
 class NewsAiSkillWiringTest {
@@ -21,6 +22,7 @@ class NewsAiSkillWiringTest {
 		try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
 			ctx.registerBean(AppProperties.class, AppProperties::new);
 			ctx.registerBean(LlmGateway.class, () -> mock(LlmGateway.class));
+			ctx.registerBean(ScreeningService.class, () -> mock(ScreeningService.class));
 			ctx.register(NewsFeedService.class, NewsAiSkill.class);
 			ctx.refresh();
 
@@ -39,6 +41,7 @@ class NewsAiSkillWiringTest {
 			ctx.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of("app.news.feeds-us", "Only|https://only.example/rss")));
 			ctx.registerBean(AppProperties.class, AppProperties::new);
 			ctx.registerBean(LlmGateway.class, () -> mock(LlmGateway.class));
+			ctx.registerBean(ScreeningService.class, () -> mock(ScreeningService.class));
 			ctx.register(NewsFeedService.class, NewsAiSkill.class);
 			ctx.refresh();
 			assertThat(ctx.getBean(NewsFeedService.class).feedNames("US")).containsExactly("Only");

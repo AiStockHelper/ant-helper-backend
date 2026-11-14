@@ -22,7 +22,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v4
         with:
@@ -74,7 +74,7 @@ jobs:
       EC2_HOST_KEY: ${{ vars.EC2_HOST_KEY }}
       EC2_KEY: ${{ secrets.EC2_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v4
         with:

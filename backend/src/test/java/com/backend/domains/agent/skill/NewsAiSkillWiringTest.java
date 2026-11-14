@@ -36,6 +36,18 @@ class NewsAiSkillWiringTest {
 	}
 
 	@Test
+	void sectorRotationSkillIsCreatedByTheContainer() {
+		try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
+			ctx.registerBean(LlmGateway.class, () -> mock(LlmGateway.class));
+			ctx.register(com.backend.domains.news.WikiNewsService.class, NewsSectorRotationSkill.class);
+			ctx.refresh();
+			NewsSectorRotationSkill skill = ctx.getBean(NewsSectorRotationSkill.class);
+			assertThat(skill.id()).isEqualTo("news-sector-rotation");
+			assertThat(skill).isInstanceOf(Skill.class);
+		}
+	}
+
+	@Test
 	void feedsCanBeOverriddenFromConfiguration() {
 		try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
 			ctx.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of("app.news.feeds-us", "Only|https://only.example/rss")));
